@@ -23,10 +23,11 @@ echo "==> Setting analog amplifier boost (+6 dB)..."
 if command -v amixer >/dev/null 2>&1; then
     amixer -c 0 sset 'WSA EAR SPKR PA Gain' 'G_6_DB' 2>/dev/null || true
     amixer -c 0 sset 'WSA2 EAR SPKR PA Gain' 'G_6_DB' 2>/dev/null || true
-    amixer -c 0 sset 'WooferLeft PA' 6 2>/dev/null || true
-    amixer -c 0 sset 'TweeterLeft PA' 6 2>/dev/null || true
-    amixer -c 0 sset 'WooferRight PA' 6 2>/dev/null || true
-    amixer -c 0 sset 'TweeterRight PA' 6 2>/dev/null || true
+    for spk in WooferLeft TweeterLeft WooferRight TweeterRight; do
+        amixer -c 0 sset "${spk} COMP" off 2>/dev/null || true
+        amixer -c 0 sset "${spk} PBR" off 2>/dev/null || true
+        amixer -c 0 sset "${spk} PA" 6 2>/dev/null || true
+    done
     sudo alsactl store 2>/dev/null || true
 fi
 
