@@ -94,3 +94,30 @@ Registriere anschließend deinen Finger:
 ```bash
 fprintd-enroll
 ```
+
+---
+
+## 🙏 Danksagung & Quellen (Credits)
+
+Dieses Projekt baut auf der Vorarbeit und den Beiträgen herausragender Entwickler der Linux-, Qualcomm- und Open-Source-Community auf:
+
+- **Fingerabdrucksensor-Treiber (`10a5:9924`):**
+  - Großer Dank an **[Terrydaktal](https://github.com/Terrydaktal)** für das Reverse-Engineering der FPC-Initialisierungssequenz (`0x12` + `0x14` + `0x90`) und den Patch [libfprint-fpc-10a5-9924](https://github.com/Terrydaktal/libfprint-fpc-10a5-9924).
+  - Den Maintainern des Upstream-Projekts **[libfprint](https://gitlab.freedesktop.org/libfprint/libfprint)** bei freedesktop.org.
+- **Audio & SoundWire Subsystem:**
+  - **Srinivas Kandagatla** (Linaro / Qualcomm) und **Krzysztof Kozlowski** für die Treiber-Entwicklung von ASoC AudioReach (`q6apm`), SoundWire (`soundwire_qcom`) und den WSA884x-Verstärkern im offiziellen Linux-Kernel.
+  - Den Entwicklern des **[ALSA-Projekts](https://github.com/alsa-project/alsa-ucm-conf)** und **[linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git)** für die UCM2-Profile und Topologien.
+  - Dem **[PipeWire](https://gitlab.freedesktop.org/pipewire/pipewire)**-Team für latenzarmes Audio und die 4-Kanal-Upmix-Architektur.
+  - **[EasyEffects](https://github.com/wwmm/easyeffects)** und den **[LSP Plugins](https://lsp-plug.in/)** für DSP-Equalization und Lautstärkeanpassung.
+- **Qualcomm Snapdragon Display & GPU:**
+  - **Dmitry Baryshkov**, **Rob Clark** und dem Linux MSM DRM-Team für die Treiber des Display Processors (`msm/dpu`) und DisplayPort (`msm/dp`).
+  - **Douglas Anderson** für das generische `panel-edp` Framework im Kernel.
+- **Device Tree & Community:**
+  - Der **Linaro Qualcomm Working Group** und der gesamten Snapdragon X Elite Linux-Community für Pionierarbeit bei der Hardware-Unterstützung unter ARM64.
+
+---
+
+## 📄 Lizenz
+- Kernel-Patches und Device Trees unterliegen der **GPL-2.0** / **BSD-2-Clause**.
+- Der Fingerprint-Patch steht unter der **LGPL-2.1** (wie Upstream `libfprint`).
+

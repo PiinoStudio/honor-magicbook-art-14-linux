@@ -137,6 +137,27 @@ The long-term goal of this project is to submit these fixes (eDP Widebus support
 
 ---
 
+## 🙏 Credits & Acknowledgments
+
+This project stands on the shoulders of giants in the Linux, Qualcomm, and open-source communities. We gratefully acknowledge:
+
+- **Fingerprint Reader Support (`10a5:9924`):**
+  - Special thanks to **[Terrydaktal](https://github.com/Terrydaktal)** for reverse-engineering the FPC sensor initialization sequence (`0x12` + `0x14` + `0x90`) and authoring the [libfprint-fpc-10a5-9924](https://github.com/Terrydaktal/libfprint-fpc-10a5-9924) patch.
+  - The **[libfprint](https://gitlab.freedesktop.org/libfprint/libfprint)** upstream maintainers at freedesktop.org.
+- **Audio & SoundWire Subsystem:**
+  - **Srinivas Kandagatla** (Linaro / Qualcomm) and **Krzysztof Kozlowski** for developing the ASoC AudioReach (`q6apm`), SoundWire (`soundwire_qcom`), and WSA884x amplifier drivers in the mainline Linux kernel.
+  - The **[ALSA Project](https://github.com/alsa-project/alsa-ucm-conf)** and **[linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git)** maintainers for UCM2 profiles and AudioReach topology frameworks.
+  - The **[PipeWire](https://gitlab.freedesktop.org/pipewire/pipewire)** team for low-latency audio and spatial quad-speaker upmixing support.
+  - **[EasyEffects](https://github.com/wwmm/easyeffects)** and **[LSP Plugins](https://lsp-plug.in/)** for DSP equalization and laptop loudness management.
+- **Qualcomm Snapdragon Display & Graphics:**
+  - **Dmitry Baryshkov**, **Rob Clark**, and the Linux MSM DRM team for the Snapdragon Display Processing Unit (`msm/dpu`) and DisplayPort (`msm/dp`) drivers.
+  - **Douglas Anderson** and upstream contributors for the generic `panel-edp` driver framework.
+- **Device Tree & Community:**
+  - The **Linaro Qualcomm Working Group** and the broader Snapdragon X Elite Linux community for ongoing reverse-engineering and bring-up work on ARM64 laptops.
+
+---
+
 ## 📄 License
 - Kernel patches and Device Trees are provided under **GPL-2.0** / **BSD-2-Clause**.
-- Fingerprint patches are licensed under **LGPL-2.1**.
+- Fingerprint patches are licensed under **LGPL-2.1** (matching upstream `libfprint`).
+
