@@ -1,0 +1,2 @@
+# Kernel command-line arguments for Snapdragon X Elite (Honor MagicBook Art 14):
+clk_ignore_unused pd_ignore_unused regulator_ignore_unused arm_smmu.disable_bypass=0 arm-smmu.disable_bypass=0 efi=noruntime efi=novamap arm64.nopauth softlockup_panic=0 panic=0

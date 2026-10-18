@@ -1,0 +1,311 @@
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c
+@@ -569,15 +569,27 @@
+ 
+ 		/*
+ 		 * call dpu_hw_ctl_setup_blendstage() to blend layers per stage cfg.
+-		 * stage data is shared between PIPES_PER_STAGE pipes.
++		 * In dual mixer mode (num_mixers == 2), mixer 0 gets pipe 0 (left half)
++		 * and mixer 1 gets pipe 1 (right half).
+ 		 */
++		struct dpu_hw_stage_cfg lm_stage_cfg;
++		struct dpu_hw_stage_cfg *p_stage_cfg = &stage_cfg[i / PIPES_PER_STAGE];
++
++		if (cstate->num_mixers > 1) {
++			int s;
++			memset(&lm_stage_cfg, 0, sizeof(lm_stage_cfg));
++			for (s = 0; s < DPU_STAGE_MAX; s++) {
++				lm_stage_cfg.stage[s][0] = p_stage_cfg->stage[s][i];
++				lm_stage_cfg.multirect_index[s][0] = p_stage_cfg->multirect_index[s][i];
++			}
++			p_stage_cfg = &lm_stage_cfg;
++		}
++
+ 		if (ctl->ops.setup_blendstage)
+-			ctl->ops.setup_blendstage(ctl, mixer[i].hw_lm->idx,
+-				&stage_cfg[i / PIPES_PER_STAGE]);
++			ctl->ops.setup_blendstage(ctl, mixer[i].hw_lm->idx, p_stage_cfg);
+ 
+ 		if (lm->ops.setup_blendstage)
+-			lm->ops.setup_blendstage(lm, mixer[i].hw_lm->idx,
+-				&stage_cfg[i / PIPES_PER_STAGE]);
++			lm->ops.setup_blendstage(lm, mixer[i].hw_lm->idx, p_stage_cfg);
+ 	}
+ }
+ 
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
+@@ -283,12 +283,14 @@
+ 	disp_info = &dpu_enc->disp_info;
+ 	index = disp_info->h_tile_instance[0];
+ 
++	bool res = false;
+ 	if (disp_info->intf_type == INTF_DP)
+-		return msm_dp_wide_bus_available(priv->kms->dp[index]);
++		res = msm_dp_wide_bus_available(priv->kms->dp[index]);
+ 	else if (disp_info->intf_type == INTF_DSI)
+-		return msm_dsi_wide_bus_enabled(priv->kms->dsi[index]);
+-
+-	return false;
++		res = msm_dsi_wide_bus_enabled(priv->kms->dsi[index]);
++
++
++	return res;
+ }
+ 
+ /**
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
+@@ -139,6 +139,7 @@
+ 		timing->xres = timing->width;
+ 		timing->dce_bytes_per_line = msm_dsc_get_bytes_per_line(dsc);
+ 	}
++
+ }
+ 
+ static u32 get_horizontal_total(const struct dpu_hw_intf_timing_params *timing)
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_intf.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_intf.c
+@@ -219,6 +219,7 @@
+ 
+ 		active_hctl = (active_h_end << 16) | active_h_start;
+ 		display_hctl = active_hctl;
++		active_data_hctl = active_hctl;
+ 
+ 		intf_cfg |= INTF_CFG_ACTIVE_H_EN | INTF_CFG_ACTIVE_V_EN;
+ 	}
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.c
+@@ -841,7 +841,7 @@
+ 
+ 		if ((catalog->sspp[i].features & BIT(DPU_SSPP_CURSOR))
+ 			&& cursor_planes_idx < max_crtc_count)
+-			type = DRM_PLANE_TYPE_CURSOR;
++			type = DRM_PLANE_TYPE_OVERLAY;
+ 		else if (primary_planes_idx < max_crtc_count)
+ 			type = DRM_PLANE_TYPE_PRIMARY;
+ 		else
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_plane.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_plane.c
+@@ -949,7 +949,9 @@
+ 				DRM_RECT_ARG(&pipe_cfg->src_rect), DRM_RECT_ARG(&pipe_cfg->dst_rect));
+ 
+ 		/* Split wide rect into 2 rect */
+-		if ((drm_rect_width(&pipe_cfg->src_rect) > max_linewidth) ||
++		if ((drm_rect_width(&pipe_cfg->src_rect) > pdpu->catalog->caps->max_mixer_width) ||
++		    (num_lm > 1 && drm_rect_width(&pipe_cfg->src_rect) > (mode->hdisplay / num_lm)) ||
++		    (drm_rect_width(&pipe_cfg->src_rect) > max_linewidth) ||
+ 		     _dpu_plane_calc_clk(mode, pipe_cfg) > max_mdp_clk_rate) {
+ 
+ 			if (drm_rect_width(&pipe_cfg->src_rect) > 2 * max_linewidth) {
+@@ -1214,12 +1216,14 @@
+ 					      struct drm_plane_state *plane_state,
+ 					      struct dpu_global_state *global_state,
+ 					      struct drm_crtc *crtc,
++					      const struct drm_crtc_state *crtc_state,
+ 					      struct dpu_rm_sspp_requirements *reqs)
+ {
+ 	struct drm_plane *plane = plane_state->plane;
+ 	struct dpu_kms *dpu_kms = _dpu_plane_get_kms(plane);
+ 	struct dpu_sw_pipe *r_pipe = pipe + 1;
+ 	struct dpu_sw_pipe_cfg *r_pipe_cfg = pipe_cfg + 1;
++	u32 num_lm = crtc_state ? dpu_crtc_get_num_lm(crtc_state) : 1;
+ 
+ 	if (drm_rect_width(&pipe_cfg->src_rect) == 0)
+ 		return 0;
+@@ -1233,17 +1237,21 @@
+ 	if (drm_rect_width(&r_pipe_cfg->src_rect) == 0)
+ 		return 0;
+ 
+-	if (dpu_plane_try_multirect_parallel(pipe, pipe_cfg, r_pipe, r_pipe_cfg,
++	if (num_lm <= 1 &&
++	    dpu_plane_try_multirect_parallel(pipe, pipe_cfg, r_pipe, r_pipe_cfg,
+ 					      pipe->sspp,
+ 					      msm_framebuffer_format(plane_state->fb),
+ 					      dpu_kms->catalog->caps->max_linewidth))
+ 		return 0;
+ 
+ 	r_pipe->sspp = dpu_rm_reserve_sspp(&dpu_kms->rm, global_state, crtc, reqs);
+-	if (!r_pipe->sspp)
++	if (!r_pipe->sspp) {
++		DPU_ERROR("failed to reserve sspp for r_pipe\n");
+ 		return -ENODEV;
++	}
+ 	r_pipe->multirect_index = DPU_SSPP_RECT_SOLO;
+ 	r_pipe->multirect_mode = DPU_SSPP_MULTIRECT_NONE;
++
+ 
+ 	return 0;
+ }
+@@ -1301,7 +1309,7 @@
+ 		ret = dpu_plane_assign_resource_in_stage(pipe, pipe_cfg,
+ 							 plane_state,
+ 							 global_state,
+-							 crtc, &reqs);
++							 crtc, crtc_state, &reqs);
+ 		if (ret)
+ 			return ret;
+ 	}
+--- a/drivers/gpu/drm/msm/dp/dp_ctrl.c
++++ b/drivers/gpu/drm/msm/dp/dp_ctrl.c
+@@ -1641,6 +1641,16 @@
+ 
+ 	/* config DOWNSPREAD_CTRL and MAIN_LINK_CHANNEL_CODING_SET */
+ 	drm_dp_dpcd_write(ctrl->aux, DP_DOWNSPREAD_CTRL, encoding, 2);
++
++	/* ARGON FIX: Ensure DSC decompression is disabled in panel TCON (clear UEFI state!) */
++	{
++		u8 cur_dsc = 0xff, dsc_off = 0x00;
++		drm_dp_dpcd_readb(ctrl->aux, 0x160, &cur_dsc);
++		pr_err("HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x%02x\n", cur_dsc);
++		drm_dp_dpcd_writeb(ctrl->aux, 0x160, dsc_off);
++		drm_dp_dpcd_readb(ctrl->aux, 0x160, &cur_dsc);
++		pr_err("HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x%02x\n", cur_dsc);
++	}
+ 
+ 	if (drm_dp_alternate_scrambler_reset_cap(dpcd)) {
+ 		assr = DP_ALTERNATE_SCRAMBLER_RESET_ENABLE;
+--- a/drivers/gpu/drm/msm/dp/dp_display.c
++++ b/drivers/gpu/drm/msm/dp/dp_display.c
+@@ -1298,12 +1298,15 @@
+ {
+ 	struct msm_dp_display_private *dp;
+ 
++	if (!msm_dp_display)
++		return true;
++
+ 	dp = container_of(msm_dp_display, struct msm_dp_display_private, msm_dp_display);
+ 
+ 	if (dp->msm_dp_mode.out_fmt_is_yuv_420)
+ 		return false;
+ 
+-	return dp->wide_bus_supported;
++	return true;
+ }
+ 
+ void msm_dp_display_debugfs_init(struct msm_dp *msm_dp_display, struct dentry *root, bool is_edp)
+--- a/drivers/gpu/drm/msm/dp/dp_panel.c
++++ b/drivers/gpu/drm/msm/dp/dp_panel.c
+@@ -215,7 +215,7 @@
+ 		u32 mode_edid_bpp, u32 mode_pclk_khz)
+ {
+ 	const struct msm_dp_link_info *link_info;
+-	const u32 max_supported_bpp = 30, min_supported_bpp = 18;
++	const u32 max_supported_bpp = 24, min_supported_bpp = 18; /* Cap at 8 bpc for 120Hz uncompressed */
+ 	u32 bpp, data_rate_khz;
+ 
+ 	bpp = min(mode_edid_bpp, max_supported_bpp);
+@@ -722,6 +722,10 @@
+ 	msm_dp_panel->msm_dp_mode.bpp = msm_dp_panel_get_mode_bpp(msm_dp_panel, msm_dp_panel->msm_dp_mode.bpp,
+ 						      msm_dp_panel->msm_dp_mode.drm_mode.clock);
+ 
++	if (msm_dp_panel->msm_dp_mode.bpp > 24) {
++		pr_err("HONOR_DEBUG: capping bpp from %d to 24 (8 bpc)\n", msm_dp_panel->msm_dp_mode.bpp);
++		msm_dp_panel->msm_dp_mode.bpp = 24;
++	}
+ 	drm_dbg_dp(panel->drm_dev, "updated bpp = %d\n",
+ 				msm_dp_panel->msm_dp_mode.bpp);
+ 
+--- a/drivers/gpu/drm/msm/msm_atomic_trace.h
++++ b/drivers/gpu/drm/msm/msm_atomic_trace.h
+@@ -106,5 +106,5 @@
+ #endif
+ 
+ #undef TRACE_INCLUDE_PATH
+-#define TRACE_INCLUDE_PATH ../../drivers/gpu/drm/msm
++#define TRACE_INCLUDE_PATH .
+ #include <trace/define_trace.h>
+--- a/drivers/gpu/drm/msm/msm_gpu_trace.h
++++ b/drivers/gpu/drm/msm/msm_gpu_trace.h
+@@ -234,5 +234,5 @@
+ #endif
+ 
+ #undef TRACE_INCLUDE_PATH
+-#define TRACE_INCLUDE_PATH ../../drivers/gpu/drm/msm
++#define TRACE_INCLUDE_PATH .
+ #include <trace/define_trace.h>
+--- a/drivers/gpu/drm/panel/panel-edp.c
++++ b/drivers/gpu/drm/panel/panel-edp.c
+@@ -41,6 +41,37 @@
+ #include <drm/drm_device.h>
+ #include <drm/drm_edid.h>
+ #include <drm/drm_panel.h>
++#include <drm/drm_modes.h>
++
++static const struct drm_display_mode edo_146_3k_modes[] = {
++	{
++		.clock = 900864,
++		.hdisplay = 3120,
++		.hsync_start = 3120 + 212,
++		.hsync_end = 3120 + 212 + 4,
++		.htotal = 3120 + 212 + 4 + 64,
++		.vdisplay = 2080,
++		.vsync_start = 2080 + 122,
++		.vsync_end = 2080 + 122 + 1,
++		.vtotal = 2080 + 122 + 1 + 5,
++		.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
++		.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
++	},
++	{
++		.clock = 900864,
++		.hdisplay = 3120,
++		.hsync_start = 3120 + 212,
++		.hsync_end = 3120 + 212 + 4,
++		.htotal = 3120 + 212 + 4 + 64,
++		.vdisplay = 2080,
++		.vsync_start = 2080 + 2330,
++		.vsync_end = 2080 + 2330 + 1,
++		.vtotal = 2080 + 2330 + 1 + 5,
++		.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
++		.type = DRM_MODE_TYPE_DRIVER,
++	},
++};
++
+ 
+ /**
+  * struct panel_delay - Describes delays for a simple panel.
+@@ -591,8 +622,11 @@
+ 	if (p->ddc) {
+ 		pm_runtime_get_sync(panel->dev);
+ 
+-		if (!p->drm_edid)
+-			p->drm_edid = drm_edid_read_ddc(connector, p->ddc);
++		if (!p->drm_edid) {
++			p->drm_edid = drm_edid_read_base_block(p->ddc);
++			if (!p->drm_edid)
++				p->drm_edid = drm_edid_read_ddc(connector, p->ddc);
++		}
+ 
+ 		drm_edid_connector_update(connector, p->drm_edid);
+ 
+@@ -628,6 +662,7 @@
+ 	 */
+ 	drm_connector_set_panel_orientation(connector, p->orientation);
+ 
++	pr_err("HONOR_DEBUG: panel_edp_get_modes returning %d modes (has_hard_coded=%d)\n", num, has_hard_coded_modes);
+ 	return num;
+ }
+ 
+@@ -822,6 +857,12 @@
+ 
+ 		/* Update the delay; everything else comes from EDID */
+ 		desc->delay = *panel->detected_panel->delay;
++		if (product_id == 0x4179) {
++			desc->modes = edo_146_3k_modes;
++			desc->num_modes = ARRAY_SIZE(edo_146_3k_modes);
++			desc->bpc = 8;
++			pr_err("HONOR_DEBUG: Populated fixed 3120x2080 modes for EDO 0x4179\n");
++		}
+ 	}
+ 
+ exit:
+@@ -2104,7 +2145,8 @@
+ 	EDP_PANEL_ENTRY('C', 'S', 'W', 0x1519, &delay_200_500_e80_d50, "MNF601BS1-3"),
+ 	EDP_PANEL_ENTRY('C', 'S', 'W', 0x1529, &delay_200_500_e80_d50, "MNF307QS3-2"),
+ 
+-	EDP_PANEL_ENTRY('E', 'T', 'C', 0x0000, &delay_50_500_e200_d200_po2e335, "LP079QX1-SP0V"),
++		EDP_PANEL_ENTRY('E', 'D', 'O', 0x4179, &delay_200_500_e50, "EDO-146-3K-OLED"),
++EDP_PANEL_ENTRY('E', 'T', 'C', 0x0000, &delay_50_500_e200_d200_po2e335, "LP079QX1-SP0V"),
+ 
+ 	EDP_PANEL_ENTRY('H', 'K', 'C', 0x2d51, &delay_200_500_e200, "Unknown"),
+ 	EDP_PANEL_ENTRY('H', 'K', 'C', 0x2d5b, &delay_200_500_e200, "MB116AN01"),

@@ -1,0 +1,11 @@
+# GRUB Configuration Example for Honor MagicBook Art 14 Snapdragon (X1E80100)
+set timeout=5
+set default=0
+
+menuentry "Linux (Honor MagicBook Art 14 Snapdragon - 120Hz Native OLED)" {
+    search --no-floppy --file --set=root /dtb/honor_native_edp_fix.dtb
+    devicetree ($root)/dtb/honor_native_edp_fix.dtb
+    linux ($root)/vmlinuz root=UUID=<YOUR-ROOT-PARTITION-UUID> ro rootflags=subvol=root rootwait console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused arm_smmu.disable_bypass=0 arm-smmu.disable_bypass=0 efi=noruntime efi=novamap arm64.nopauth softlockup_panic=0 panic=0
+    initrd ($root)/initrd.img
+    boot
+}
