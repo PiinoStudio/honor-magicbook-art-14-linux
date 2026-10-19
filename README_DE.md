@@ -14,6 +14,9 @@
 - **Fingerprint:** Biometrische Anmeldung & `sudo` über den integrierten Sensor (`10a5:9924 FPC`).
 - **Konnektivität:** Wi-Fi 7 (FastConnect 7800 / `ath12k`), Bluetooth.
 - **Eingabe & Energie:** Multitouch-Touchpad, Tastaturbeleuchtung, Akkustandsanzeige & Ladekontrolle (`qcom-battmgr`).
+- **Deckelsensor (Lid Switch) & Display-Aus:** Echter Hardware Hall-Sensor (`gpio-keys` auf TLMM GPIO 92) schaltet beim Zuklappen das Display sofort aus und versetzt das Notebook in den Standby (Suspend).
+- **Mikrofon Ghost-Mute Fix:** Udev-Regel unterdrückt ständige Phantom-Lautstärke/Mute-Popups, die von der Touchscreen-Firmwareschnittstelle (`2808:5662 UNKNOWN`) geflutet werden.
+- **RTC-Uhrzeit-Persistenz & System-Updates:** Automatischer Fallback-Dienst sichert die Uhrzeit über Neustarts hinweg, sodass Offline-System-Updates (z. B. GNOME Software / DNF5) nicht mehr an angeblich in der Zukunft liegenden GPG-Paketsignaturen scheitern.
 
 ---
 
@@ -25,7 +28,7 @@
 ├── README_DE.md            # Deutsche Dokumentation
 ├── display/
 │   ├── patch_honor_native_120hz_oled.diff  # Universeller Kernel-Patch (EDO 0x4179 Modeline + eDP Widebus + Dual-Mixer Offset)
-│   ├── honor_native_edp_fix.dtb            # Kompiliertes Device Tree Binary für den Bootloader
+│   ├── honor_native_edp_fix.dtb            # Kompiliertes Device Tree Binary für den Bootloader (inkl. Lid Switch)
 │   ├── honor_native_edp_fix.dts            # Vollständiger Device Tree Quellcode
 │   ├── apply_kernel_patch.sh               # Skript zum Patchen eines Kernels
 │   └── fedora45_modules/                   # Vorgebaute Module für Fedora 45 (msm.ko, panel-edp.ko)
@@ -38,6 +41,18 @@
 │   ├── setup_fingerprint.sh                # 1-Klick Build- & PAM-Setup für Fingerabdruck
 │   ├── build-install.sh
 │   └── apply-patch.sh
+├── power/
+│   ├── lid.conf                            # systemd-logind Konfiguration für Suspend beim Zuklappen
+│   └── setup_lid.sh                        # Unmasked Suspend-Targets und richtet logind ein
+├── input/
+│   ├── 99-ignore-ghost-micmute.rules       # Udev-Regel zur Unterdrückung der Phantom-Mute-Events
+│   └── setup_input.sh                      # 1-Klick Setup für die Eingabegeräte-Korrektur
+├── system/
+│   ├── save-restore-clock.sh               # Skript zum Speichern/Wiederherstellen der Systemzeit
+│   ├── save-restore-clock.service          # Frühstart-Systemd-Dienst zur Wiederherstellung der Uhrzeit
+│   ├── save-clock-periodic.service         # Periodische Sicherung der Uhrzeit
+│   ├── save-clock-periodic.timer           # Timer für periodische Sicherung
+│   └── setup_clock.sh                      # 1-Klick Setup für RTC-Uhrzeit-Persistenz
 └── boot/
     ├── cmdline.txt                         # Erforderliche Boot-Parameter für Snapdragon X Elite
     └── grub.cfg.example                    # Beispiel-Konfiguration für GRUB 2
@@ -94,6 +109,40 @@ Registriere anschließend deinen Finger:
 ```bash
 fprintd-enroll
 ```
+
+---
+
+### 5. Display-Abschaltung beim Zuklappen (Lid Switch)
+Stelle sicher, dass die aktualisierte `display/honor_native_edp_fix.dtb` (mit aktiviertem `switch-lid` auf GPIO 92) geladen wird. Richte anschließend `systemd-logind` ein:
+```bash
+cd power
+chmod +x setup_lid.sh
+./setup_lid.sh
+```
+Beim Zuklappen des Deckels schaltet sich das OLED-Display sofort ab und das Notebook geht innerhalb von 2–3 Sekunden in den Suspend.
+
+---
+
+### 6. Phantom-Mikrofon-Stummschaltung (Ghost Popups) beheben
+Auf vielen Firmware-Ständen feuert das I2C-Touchscreen-Subgerät (`2808:5662 UNKNOWN`) fehlerhafte `KEY_MICMUTE`-Wiederholungsevents ab, die zu ständigen Mikrofon-Lautstärke-Popups führen. Installiere die udev-Regel zur Deaktivierung:
+```bash
+cd input
+chmod +x setup_input.sh
+./setup_input.sh
+```
+
+---
+
+### 7. Offline-Updates & System-Uhrzeit (RTC-Fix)
+Da im Upstream-Linux für den Snapdragon X Elite derzeit noch kein Hardware-RTC-Treiber aktiv ist, startet das System bei Offline-Boots mit einem alten Zeitstempel. Dies führt dazu, dass Paketmanager (wie GNOME Software / DNF5) bei Offline-Updates scheitern, weil die OpenPGP-Signaturen der RPMs in der relativen System-Zukunft liegen.
+
+Installiere den automatischen Uhrzeit-Sicherungsdienst:
+```bash
+cd system
+chmod +x setup_clock.sh save-restore-clock.sh
+./setup_clock.sh
+```
+Dieser sichert die Uhrzeit regelmäßig und beim Herunterfahren auf die SSD und stellt sie vor dem Start der Update-Dienste wieder her.
 
 ---
 

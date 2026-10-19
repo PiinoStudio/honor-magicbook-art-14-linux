@@ -1,0 +1,6 @@
+[Unit]
+Description=Periodically save system clock to disk
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/save-restore-clock.sh save

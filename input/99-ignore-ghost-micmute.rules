@@ -1,0 +1,2 @@
+# Silence bogus KEY_MICMUTE ghost repeat events from touchscreen firmware interface (2808:5662 UNKNOWN)
+ACTION=="add|change", SUBSYSTEM=="input", ATTR{name}=="hid-over-i2c 2808:5662 UNKNOWN", ATTR{inhibited}="1", ENV{LIBINPUT_IGNORE_DEVICE}="1"

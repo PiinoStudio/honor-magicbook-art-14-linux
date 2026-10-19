@@ -9422,7 +9422,7 @@
 
 	gpio-keys {
 		compatible = "gpio-keys";
-		status = "disabled";
+		status = "okay";
 		pinctrl-0 = <0x1be>;
 		pinctrl-names = "default";
 

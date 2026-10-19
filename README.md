@@ -26,6 +26,9 @@
 - **Fingerprint Reader:** Biometric authentication for system login and `sudo` elevation via the integrated `10a5:9924` Fingerprint Cards (FPC) match-on-host sensor.
 - **Wireless & Networking:** Qualcomm FastConnect 7800 Wi-Fi 7 (`ath12k_wifi7_pci`) and Bluetooth.
 - **Input & Power:** Multitouch trackpad, keyboard backlight, battery status monitoring and charging management via `qcom-battmgr`.
+- **Lid Sensor & Display Suspend:** Hardware Hall-effect lid switch (`gpio-keys` on TLMM GPIO 92) automatically turns off display and suspends the laptop when the lid is closed.
+- **Microphone Ghost Mute Fix:** Udev rule suppresses bogus `KEY_MICMUTE` repeat storms emitted by the touchscreen I2C firmware interface (`2808:5662 UNKNOWN`).
+- **RTC Clock Persistence:** Automated fallback service preserves the system clock across reboots, preventing offline package update failures caused by future OpenPGP signature timestamps.
 
 ---
 
@@ -37,7 +40,7 @@
 ├── README_DE.md            # Deutsche Dokumentation
 ├── display/
 │   ├── patch_honor_native_120hz_oled.diff  # Unified patch (EDO 0x4179 modeline + eDP widebus + dual mixer offset)
-│   ├── honor_native_edp_fix.dtb            # Compiled Device Tree Binary for bootloader
+│   ├── honor_native_edp_fix.dtb            # Compiled Device Tree Binary for bootloader (includes lid switch)
 │   ├── honor_native_edp_fix.dts            # Decompiled human-readable Device Tree source
 │   ├── apply_kernel_patch.sh               # Helper script to apply patch to any Linux kernel tree
 │   └── fedora45_modules/                   # Pre-compiled stripped modules for Fedora 45 (msm.ko, panel-edp.ko)
@@ -50,6 +53,18 @@
 │   ├── setup_fingerprint.sh                # Automated build, install & PAM configuration script
 │   ├── build-install.sh
 │   └── apply-patch.sh
+├── power/
+│   ├── lid.conf                            # systemd-logind configuration for lid switch suspend
+│   └── setup_lid.sh                        # Unmasks suspend targets and installs lid configuration
+├── input/
+│   ├── 99-ignore-ghost-micmute.rules       # Udev rule to silence touchscreen mic-mute spam
+│   └── setup_input.sh                      # One-click installation for input fix
+├── system/
+│   ├── save-restore-clock.sh               # Clock save/restore helper script
+│   ├── save-restore-clock.service          # Early boot systemd clock restore service
+│   ├── save-clock-periodic.service         # Periodic clock save service
+│   ├── save-clock-periodic.timer           # Periodic clock save timer
+│   └── setup_clock.sh                      # One-click installation for RTC clock fallback
 └── boot/
     ├── cmdline.txt                         # Required kernel boot arguments
     └── grub.cfg.example                    # Sample GRUB 2 configuration
@@ -129,6 +144,40 @@ Once installed, enroll your fingerprint:
 fprintd-enroll
 ```
 Or open **GNOME Settings → Users → Fingerprint Login** to add your prints.
+
+---
+
+### 5. Enable Lid Close Suspend & Display Off
+Ensure you are using the updated `display/honor_native_edp_fix.dtb` (which enables `switch-lid` on GPIO 92). Then configure `systemd-logind`:
+```bash
+cd power
+chmod +x setup_lid.sh
+./setup_lid.sh
+```
+Closing the laptop lid will now immediately turn off the OLED panel and suspend the machine within 2–3 seconds.
+
+---
+
+### 6. Silence Touchscreen Ghost Mic-Mute Popups
+On firmware versions where the touchscreen subdevice (`2808:5662 UNKNOWN`) floods the system with `KEY_MICMUTE` repeat events, install the udev inhibition rule:
+```bash
+cd input
+chmod +x setup_input.sh
+./setup_input.sh
+```
+
+---
+
+### 7. Fix Offline Updates & RTC Clock Drift
+Because Snapdragon X Elite laptops currently lack a persistent hardware RTC in upstream Linux, early boot defaults to a fallback timestamp. This causes offline package managers (like GNOME Software / DNF5) to reject updates because package OpenPGP signatures appear to come from the future.
+
+Install the automated clock preservation service:
+```bash
+cd system
+chmod +x setup_clock.sh save-restore-clock.sh
+./setup_clock.sh
+```
+This saves the system clock on shutdown and every 10 minutes, restoring it in early boot before `system-update.target` runs.
 
 ---
 

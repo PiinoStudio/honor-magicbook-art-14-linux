@@ -1,0 +1,14 @@
+[Unit]
+Description=Save and Restore System Clock (RTC fallback)
+DefaultDependencies=no
+Before=sysinit.target shutdown.target system-update-pre.target time-set.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/save-restore-clock.sh restore
+ExecStop=/usr/local/bin/save-restore-clock.sh save
+
+[Install]
+WantedBy=sysinit.target
