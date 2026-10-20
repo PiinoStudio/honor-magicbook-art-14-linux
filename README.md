@@ -27,6 +27,8 @@
 - **Wireless & Networking:** Qualcomm FastConnect 7800 Wi-Fi 7 (`ath12k_wifi7_pci`) and Bluetooth.
 - **Input & Power:** Multitouch trackpad, keyboard backlight, battery status monitoring and charging management via `qcom-battmgr`.
 - **Lid Sensor & Display Suspend:** Hardware Hall-effect lid switch (`gpio-keys` on TLMM GPIO 92) automatically turns off display and suspends the laptop when the lid is closed.
+- **0.00W Deep Sleep (Suspend-Then-Hibernate):** Instant wake for short breaks (`s2idle`) + automated transition to disk hibernation (0W power draw) after 15 minutes of inactivity, solving the platform standby battery drain.
+- **Windows 11 Dual-Boot:** Reliable UEFI GRUB chainloading configuration to dual-boot Windows 11 ARM64 alongside Linux.
 - **Microphone Ghost Mute Fix:** Udev rule suppresses bogus `KEY_MICMUTE` repeat storms emitted by the touchscreen I2C firmware interface (`2808:5662 UNKNOWN`).
 - **RTC Clock Persistence:** Automated fallback service preserves the system clock across reboots, preventing offline package update failures caused by future OpenPGP signature timestamps.
 
@@ -54,7 +56,11 @@
 │   ├── build-install.sh
 │   └── apply-patch.sh
 ├── power/
-│   ├── lid.conf                            # systemd-logind configuration for lid switch suspend
+│   ├── setup_suspend_hibernate.sh          # One-click installer for 0W deep hibernation & power savers
+│   ├── snapdragon-power-saver.sh           # Suspend hook disabling USB wake locks and Wi-Fi drain
+│   ├── 10-runtime-pm.rules                 # Persistent udev runtime power management rules
+│   ├── hibernate.conf                      # systemd-sleep policy (15min timeout to hibernate)
+│   ├── lid.conf                            # systemd-logind policy (suspend-then-hibernate)
 │   └── setup_lid.sh                        # Unmasks suspend targets and installs lid configuration
 ├── input/
 │   ├── 99-ignore-ghost-micmute.rules       # Udev rule to silence touchscreen mic-mute spam
@@ -67,7 +73,7 @@
 │   └── setup_clock.sh                      # One-click installation for RTC clock fallback
 └── boot/
     ├── cmdline.txt                         # Required kernel boot arguments
-    └── grub.cfg.example                    # Sample GRUB 2 configuration
+    └── grub.cfg.example                    # Sample GRUB 2 configuration (Linux + Windows 11 Dual-Boot)
 ```
 
 ---
@@ -79,13 +85,16 @@ Copy `display/honor_native_edp_fix.dtb` to your EFI partition (e.g., `/boot/efi/
 
 Add the following kernel parameters to your bootloader (GRUB / systemd-boot):
 ```text
-clk_ignore_unused pd_ignore_unused regulator_ignore_unused arm_smmu.disable_bypass=0 arm-smmu.disable_bypass=0 efi=noruntime efi=novamap arm64.nopauth softlockup_panic=0 panic=0
+arm_smmu.disable_bypass=0 arm-smmu.disable_bypass=0 efi=noruntime efi=novamap arm64.nopauth softlockup_panic=0 panic=0
 ```
+> [!NOTE]
+> Do **not** use `clk_ignore_unused pd_ignore_unused regulator_ignore_unused` in daily use! Keeping unused power domains on prevents the Snapdragon SoC from clock-gating unused IP blocks and increases idle battery drain.
+
 And instruct your bootloader to load the device tree:
 ```text
 devicetree /dtb/honor_native_edp_fix.dtb
 ```
-*(See `boot/grub.cfg.example` for a complete GRUB configuration).*
+*(See `boot/grub.cfg.example` for a complete dual-boot GRUB configuration).*
 
 ---
 
@@ -147,14 +156,32 @@ Or open **GNOME Settings → Users → Fingerprint Login** to add your prints.
 
 ---
 
-### 5. Enable Lid Close Suspend & Display Off
-Ensure you are using the updated `display/honor_native_edp_fix.dtb` (which enables `switch-lid` on GPIO 92). Then configure `systemd-logind`:
+### 5. Enable Lid Suspend, Standby Power Savers & 0W Hibernation
+
+Qualcomm Snapdragon X Elite platforms currently rely on `s2idle` (Suspend-to-Idle), which draws ~2W because several peripheral drivers and the Embedded Controller maintain active voltage retention votes. To solve backpack heating and battery drain over hours, we provide **Suspend-Then-Hibernate**:
+
+#### Option A: Quick Power-Saver Setup (Lid Switch + Standby Hooks)
 ```bash
 cd power
 chmod +x setup_lid.sh
 ./setup_lid.sh
 ```
-Closing the laptop lid will now immediately turn off the OLED panel and suspend the machine within 2–3 seconds.
+This installs:
+- Hall-effect lid sensor sleep trigger.
+- Sleep hooks that disable USB wake locks and cut Wi-Fi radio during sleep.
+- Udev rules enforcing runtime PM `auto` on USB and PCIe controllers.
+
+#### Option B: Full 0.00W Deep Hibernation (`suspend-then-hibernate`)
+```bash
+cd power
+chmod +x setup_suspend_hibernate.sh
+./setup_suspend_hibernate.sh
+```
+What this does:
+1. Allocates an uncompressed, nocow 34GB swapfile on Btrfs (`/swap/swapfile`).
+2. Configures the kernel `resume` module in `dracut` and rebuilds the initramfs.
+3. Sets systemd to sleep instantly (`s2idle`) on lid close, and transition to **0.00W disk hibernation** after 15 minutes.
+4. Resumes within **~3 seconds** from the high-speed Micron UFS storage upon pressing the power button.
 
 ---
 
@@ -178,6 +205,34 @@ chmod +x setup_clock.sh save-restore-clock.sh
 ./setup_clock.sh
 ```
 This saves the system clock on shutdown and every 10 minutes, restoring it in early boot before `system-update.target` runs.
+
+---
+
+### 8. Dual-Booting with Windows 11 ARM64
+To dual-boot alongside factory Windows 11 without boot order collisions:
+1. Keep the original Windows EFI boot files in `/EFI/Microsoft/Boot/bootmgfw.efi`.
+2. Add the chainloader stanza to your `/boot/efi/EFI/Boot/grub.cfg` (see `boot/grub.cfg.example`):
+   ```grub
+   menuentry "Windows 11" --class windows --class os {
+       insmod fat
+       insmod part_gpt
+       insmod chain
+       search --no-floppy --file --set=root /EFI/Microsoft/Boot/bootmgfw.efi
+       chainloader ($root)/EFI/Microsoft/Boot/bootmgfw.efi
+   }
+   ```
+
+---
+
+## ❓ FAQ & Technical Notes
+
+### Why doesn't Linux drop down to 0.3W in regular Standby like Windows?
+In Windows, Qualcomm ships a monolithic 4.7 MB driver (`qcpep8380.sys`) which directly programs the Resource Power Manager Hardened (RPMh) and Always-On Processor (AOP) via internal QMP/GLINK mailboxes. 
+
+Under Linux, power management is decentralized across 40+ independent subsystem drivers (`genpd`, `rpmh-rsc`, `drm/msm`, `dwc3-qcom`). RPMh uses hardware voting aggregation ($\text{Rail} = \max(\text{Votes})$); if even one driver or the proprietary Honor Embedded Controller maintains a retention vote, the SoC cannot collapse the `VDD_CX` rail. Using **Suspend-Then-Hibernate** completely bypasses this limitation by cutting power to 0.00W after 15 minutes.
+
+### What is the 73.4 MB `Persisted_Capsules.bin` file in the EFI partition?
+If you inspect `/boot/efi/Persisted_Capsules.bin`, you may wonder if an unapplied BIOS update is pending. Hex analysis reveals that 73,400,306 bytes out of 73,400,320 bytes are zeroes (`0x00`). It is a pre-allocated EFI capsule reservation created during factory deployment so future UEFI capsule updates have contiguous disk space; it is **not** a pending update.
 
 ---
 
@@ -209,4 +264,3 @@ This project stands on the shoulders of giants in the Linux, Qualcomm, and open-
 ## 📄 License
 - Kernel patches and Device Trees are provided under **GPL-2.0** / **BSD-2-Clause**.
 - Fingerprint patches are licensed under **LGPL-2.1** (matching upstream `libfprint`).
-

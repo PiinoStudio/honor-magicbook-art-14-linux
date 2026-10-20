@@ -1,2 +1,8 @@
 # Kernel command-line arguments for Snapdragon X Elite (Honor MagicBook Art 14):
-clk_ignore_unused pd_ignore_unused regulator_ignore_unused arm_smmu.disable_bypass=0 arm-smmu.disable_bypass=0 efi=noruntime efi=novamap arm64.nopauth softlockup_panic=0 panic=0
+arm_smmu.disable_bypass=0 arm-smmu.disable_bypass=0 efi=noruntime efi=novamap arm64.nopauth softlockup_panic=0 panic=0
+
+# Optional Hibernation parameters (calculated via 'btrfs inspect-internal map-swapfile -r /swap/swapfile'):
+# resume=UUID=<YOUR-ROOT-UUID> resume_offset=<OFFSET>
+#
+# NOTE: clk_ignore_unused pd_ignore_unused regulator_ignore_unused should NOT be used
+# in daily operation, as keeping unused clocks/regulators active prevents SoC power gating!

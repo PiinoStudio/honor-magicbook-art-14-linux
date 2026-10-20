@@ -1,11 +1,29 @@
 # GRUB Configuration Example for Honor MagicBook Art 14 Snapdragon (X1E80100)
-set timeout=5
-set default=0
+# Supports Dual-Boot with Windows 11 ARM64 and Linux (120Hz Native OLED)
 
-menuentry "Linux (Honor MagicBook Art 14 Snapdragon - 120Hz Native OLED)" {
+set timeout=5
+set default="1. Windows 11"
+
+menuentry "1. Windows 11" --class windows --class os {
+    insmod fat
+    insmod part_gpt
+    insmod chain
+    search --no-floppy --file --set=root /EFI/Microsoft/Boot/bootmgfw.efi
+    if [ -f ($root)/EFI/Microsoft/Boot/bootmgfw.efi ]; then
+        chainloader ($root)/EFI/Microsoft/Boot/bootmgfw.efi
+    elif [ -f (hd0,gpt2)/EFI/Microsoft/Boot/bootmgfw.efi ]; then
+        chainloader (hd0,gpt2)/EFI/Microsoft/Boot/bootmgfw.efi
+    elif [ -f (hd0,gpt2)/EFI/Boot/bootaa64_windows_backup.efi ]; then
+        chainloader (hd0,gpt2)/EFI/Boot/bootaa64_windows_backup.efi
+    fi
+}
+
+menuentry "2. Linux (Honor MagicBook Art 14 Snapdragon - 120Hz Native OLED)" --class fedora --class gnu-linux --class os {
     search --no-floppy --file --set=root /dtb/honor_native_edp_fix.dtb
     devicetree ($root)/dtb/honor_native_edp_fix.dtb
-    linux ($root)/vmlinuz root=UUID=<YOUR-ROOT-PARTITION-UUID> ro rootflags=subvol=root rootwait console=tty0 clk_ignore_unused pd_ignore_unused regulator_ignore_unused arm_smmu.disable_bypass=0 arm-smmu.disable_bypass=0 efi=noruntime efi=novamap arm64.nopauth softlockup_panic=0 panic=0
+    # Replace <YOUR-ROOT-PARTITION-UUID> with your root partition UUID (e.g. from 'lsblk -f')
+    # For hibernation, optionally add: resume=UUID=<ROOT-UUID> resume_offset=<OFFSET>
+    linux ($root)/vmlinuz root=UUID=<YOUR-ROOT-PARTITION-UUID> ro rootflags=subvol=root rootwait console=tty0 arm_smmu.disable_bypass=0 arm-smmu.disable_bypass=0 efi=noruntime efi=novamap arm64.nopauth softlockup_panic=0 panic=0
     initrd ($root)/initrd.img
     boot
 }

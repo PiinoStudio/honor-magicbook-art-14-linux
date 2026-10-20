@@ -14,7 +14,9 @@
 - **Fingerprint:** Biometrische Anmeldung & `sudo` über den integrierten Sensor (`10a5:9924 FPC`).
 - **Konnektivität:** Wi-Fi 7 (FastConnect 7800 / `ath12k`), Bluetooth.
 - **Eingabe & Energie:** Multitouch-Touchpad, Tastaturbeleuchtung, Akkustandsanzeige & Ladekontrolle (`qcom-battmgr`).
-- **Deckelsensor (Lid Switch) & Display-Aus:** Echter Hardware Hall-Sensor (`gpio-keys` auf TLMM GPIO 92) schaltet beim Zuklappen das Display sofort aus und versetzt das Notebook in den Standby (Suspend).
+- **Deckelsensor (Lid Switch) & Display-Aus:** Echter Hardware Hall-Sensor (`gpio-keys` auf TLMM GPIO 92) schaltet beim Zuklappen das Display sofort aus und versetzt das Notebook in den Standby.
+- **0,00W Tiefschlaf (Suspend-Then-Hibernate):** Schneller Standby (`s2idle`) beim Zuklappen + automatischer Wechsel nach 15 Minuten in den stromlosen Ruhezustand (0W) mit 3-Sekunden-Resume.
+- **Windows 11 Dual-Boot:** Vollständiger UEFI GRUB Chainloader für paralleles Booten von Windows 11 ARM64 und Linux.
 - **Mikrofon Ghost-Mute Fix:** Udev-Regel unterdrückt ständige Phantom-Lautstärke/Mute-Popups, die von der Touchscreen-Firmwareschnittstelle (`2808:5662 UNKNOWN`) geflutet werden.
 - **RTC-Uhrzeit-Persistenz & System-Updates:** Automatischer Fallback-Dienst sichert die Uhrzeit über Neustarts hinweg, sodass Offline-System-Updates (z. B. GNOME Software / DNF5) nicht mehr an angeblich in der Zukunft liegenden GPG-Paketsignaturen scheitern.
 
@@ -42,8 +44,12 @@
 │   ├── build-install.sh
 │   └── apply-patch.sh
 ├── power/
-│   ├── lid.conf                            # systemd-logind Konfiguration für Suspend beim Zuklappen
-│   └── setup_lid.sh                        # Unmasked Suspend-Targets und richtet logind ein
+│   ├── setup_suspend_hibernate.sh          # 1-Klick Setup für 0W Tiefschlaf & Stromspar-Hooks
+│   ├── snapdragon-power-saver.sh           # Standby-Hook (deaktiviert USB-Wakeup & kappt WLAN-Verbrauch)
+│   ├── 10-runtime-pm.rules                 # Udev-Regeln für automatisches Runtime-PM
+│   ├── hibernate.conf                      # systemd-sleep Policy (15 Min Standby -> Hibernate)
+│   ├── lid.conf                            # systemd-logind Konfiguration für Deckelaktion
+│   └── setup_lid.sh                        # Unmasked Suspend-Targets und richtet Basis-Standby ein
 ├── input/
 │   ├── 99-ignore-ghost-micmute.rules       # Udev-Regel zur Unterdrückung der Phantom-Mute-Events
 │   └── setup_input.sh                      # 1-Klick Setup für die Eingabegeräte-Korrektur
@@ -55,7 +61,7 @@
 │   └── setup_clock.sh                      # 1-Klick Setup für RTC-Uhrzeit-Persistenz
 └── boot/
     ├── cmdline.txt                         # Erforderliche Boot-Parameter für Snapdragon X Elite
-    └── grub.cfg.example                    # Beispiel-Konfiguration für GRUB 2
+    └── grub.cfg.example                    # Beispiel-Konfiguration für GRUB 2 (Linux + Windows 11 Dual-Boot)
 ```
 
 ---
@@ -66,12 +72,16 @@
 Kopiere `display/honor_native_edp_fix.dtb` in deine EFI-Partition (z. B. nach `/boot/efi/dtb/`).
 Füge in deiner Bootloader-Konfiguration (GRUB / systemd-boot) folgende Kernel-Argumente hinzu:
 ```text
-clk_ignore_unused pd_ignore_unused regulator_ignore_unused arm_smmu.disable_bypass=0 arm-smmu.disable_bypass=0 efi=noruntime efi=novamap arm64.nopauth softlockup_panic=0 panic=0
+arm_smmu.disable_bypass=0 arm-smmu.disable_bypass=0 efi=noruntime efi=novamap arm64.nopauth softlockup_panic=0 panic=0
 ```
+> [!NOTE]
+> Die Parameter `clk_ignore_unused pd_ignore_unused regulator_ignore_unused` sollten im Alltag **nicht** verwendet werden, da sie das automatische Abschalten ungenutzter SoC-Bereiche verhindern und den Standby-Verbrauch erhöhen.
+
 Und lade das Device Tree Binary mit:
 ```text
 devicetree /dtb/honor_native_edp_fix.dtb
 ```
+*(Siehe `boot/grub.cfg.example` für eine vollständige Dual-Boot GRUB-Konfiguration).*
 
 ---
 
@@ -98,33 +108,45 @@ chmod +x setup_audio.sh
 
 ---
 
-### 4. Fingerabdrucksensor aktivieren
-Führe das Fingerprint-Setup aus:
+### 4. Fingerabdruck-Sensor aktivieren (FPC `10a5:9924`)
 ```bash
 cd fingerprint
 chmod +x setup_fingerprint.sh build-install.sh apply-patch.sh
 ./setup_fingerprint.sh
 ```
-Registriere anschließend deinen Finger:
+Danach Fingerabdrücke registrieren:
 ```bash
 fprintd-enroll
 ```
 
 ---
 
-### 5. Display-Abschaltung beim Zuklappen (Lid Switch)
-Stelle sicher, dass die aktualisierte `display/honor_native_edp_fix.dtb` (mit aktiviertem `switch-lid` auf GPIO 92) geladen wird. Richte anschließend `systemd-logind` ein:
+### 5. Deckelsensor, Stromspar-Standby & 0W Tiefschlaf (Hibernate)
+
+Snapdragon X Elite Laptops nutzen unter Linux den `s2idle`-Modus, der aktuell ~2W zieht (da diverse Treiber und der Honor Embedded Controller noch Spannungs-Votes offen halten). Um zu verhindern, dass der Laptop im Rucksack warm wird und Akku verliert, nutzen wir **Suspend-Then-Hibernate**:
+
+#### Option A: Schnelles Standby-Setup (Deckelschalter & USB/WLAN-Sparer)
 ```bash
 cd power
 chmod +x setup_lid.sh
 ./setup_lid.sh
 ```
-Beim Zuklappen des Deckels schaltet sich das OLED-Display sofort ab und das Notebook geht innerhalb von 2–3 Sekunden in den Suspend.
+
+#### Option B: Vollständiger 0,00W Tiefschlaf (`suspend-then-hibernate`)
+```bash
+cd power
+chmod +x setup_suspend_hibernate.sh
+./setup_suspend_hibernate.sh
+```
+Was dieses Skript tut:
+1. Erstellt eine unkomprimierte 34 GB Swapdatei auf Btrfs (`/swap/swapfile`).
+2. Bindet das `resume`-Modul in Dracut ein und baut das Initramfs neu.
+3. Richtet systemd so ein, dass beim Zuklappen sofort `s2idle` aktiv wird, und nach 15 Minuten Inaktivität automatisch in den **vollständig stromlosen Ruhezustand (0,00W)** gewechselt wird.
+4. Beim Aufklappen/Starten ist das System in **ca. 3 Sekunden** von der UFS-SSD wieder voll da.
 
 ---
 
-### 6. Phantom-Mikrofon-Stummschaltung (Ghost Popups) beheben
-Auf vielen Firmware-Ständen feuert das I2C-Touchscreen-Subgerät (`2808:5662 UNKNOWN`) fehlerhafte `KEY_MICMUTE`-Wiederholungsevents ab, die zu ständigen Mikrofon-Lautstärke-Popups führen. Installiere die udev-Regel zur Deaktivierung:
+### 6. Touchscreen Phantom-Mute-Popups stummschalten
 ```bash
 cd input
 chmod +x setup_input.sh
@@ -133,40 +155,33 @@ chmod +x setup_input.sh
 
 ---
 
-### 7. Offline-Updates & System-Uhrzeit (RTC-Fix)
-Da im Upstream-Linux für den Snapdragon X Elite derzeit noch kein Hardware-RTC-Treiber aktiv ist, startet das System bei Offline-Boots mit einem alten Zeitstempel. Dies führt dazu, dass Paketmanager (wie GNOME Software / DNF5) bei Offline-Updates scheitern, weil die OpenPGP-Signaturen der RPMs in der relativen System-Zukunft liegen.
-
-Installiere den automatischen Uhrzeit-Sicherungsdienst:
+### 7. Offline-Updates & RTC-Uhrzeit sichern
 ```bash
 cd system
 chmod +x setup_clock.sh save-restore-clock.sh
 ./setup_clock.sh
 ```
-Dieser sichert die Uhrzeit regelmäßig und beim Herunterfahren auf die SSD und stellt sie vor dem Start der Update-Dienste wieder her.
 
 ---
 
-## 🙏 Danksagung & Quellen (Credits)
-
-Dieses Projekt baut auf der Vorarbeit und den Beiträgen herausragender Entwickler der Linux-, Qualcomm- und Open-Source-Community auf:
-
-- **Fingerabdrucksensor-Treiber (`10a5:9924`):**
-  - Großer Dank an **[Terrydaktal](https://github.com/Terrydaktal)** für das Reverse-Engineering der FPC-Initialisierungssequenz (`0x12` + `0x14` + `0x90`) und den Patch [libfprint-fpc-10a5-9924](https://github.com/Terrydaktal/libfprint-fpc-10a5-9924).
-  - Den Maintainern des Upstream-Projekts **[libfprint](https://gitlab.freedesktop.org/libfprint/libfprint)** bei freedesktop.org.
-- **Audio & SoundWire Subsystem:**
-  - **Srinivas Kandagatla** (Linaro / Qualcomm) und **Krzysztof Kozlowski** für die Treiber-Entwicklung von ASoC AudioReach (`q6apm`), SoundWire (`soundwire_qcom`) und den WSA884x-Verstärkern im offiziellen Linux-Kernel.
-  - Den Entwicklern des **[ALSA-Projekts](https://github.com/alsa-project/alsa-ucm-conf)** und **[linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git)** für die UCM2-Profile und Topologien.
-  - Dem **[PipeWire](https://gitlab.freedesktop.org/pipewire/pipewire)**-Team für latenzarmes Audio und die 4-Kanal-Upmix-Architektur.
-  - **[EasyEffects](https://github.com/wwmm/easyeffects)** und den **[LSP Plugins](https://lsp-plug.in/)** für DSP-Equalization und Lautstärkeanpassung.
-- **Qualcomm Snapdragon Display & GPU:**
-  - **Dmitry Baryshkov**, **Rob Clark** und dem Linux MSM DRM-Team für die Treiber des Display Processors (`msm/dpu`) und DisplayPort (`msm/dp`).
-  - **Douglas Anderson** für das generische `panel-edp` Framework im Kernel.
-- **Device Tree & Community:**
-  - Der **Linaro Qualcomm Working Group** und der gesamten Snapdragon X Elite Linux-Community für Pionierarbeit bei der Hardware-Unterstützung unter ARM64.
+### 8. Windows 11 Dual-Boot einrichten
+Um Windows 11 parallel zu Linux über das GRUB-Menü zu starten, trage den Chainloader-Block in `/boot/efi/EFI/Boot/grub.cfg` ein (siehe `boot/grub.cfg.example`):
+```grub
+menuentry "Windows 11" --class windows --class os {
+    insmod fat
+    insmod part_gpt
+    insmod chain
+    search --no-floppy --file --set=root /EFI/Microsoft/Boot/bootmgfw.efi
+    chainloader ($root)/EFI/Microsoft/Boot/bootmgfw.efi
+}
+```
 
 ---
 
-## 📄 Lizenz
-- Kernel-Patches und Device Trees unterliegen der **GPL-2.0** / **BSD-2-Clause**.
-- Der Fingerprint-Patch steht unter der **LGPL-2.1** (wie Upstream `libfprint`).
+## ❓ FAQ & Technische Hintergründe
 
+### Warum geht Linux im Standby nicht auf 0,3W wie Windows?
+Windows nutzt den monolithischen Treiber `qcpep8380.sys` (4,7 MB), der direkt über interne Hardware-Kanäle (QMP/AOP) die Stromschienen abdreht. In Linux arbeiten über 40 dezentrale Treiber (`genpd`, `rpmh-rsc`, `drm/msm`). Der Qualcomm-Hardware-Aggregator (RPMh) verlangt Einstimmigkeit: Wenn auch nur ein Treiber oder der proprietäre Honor-EC einen Vote hält, bricht die SoC-Hauptschiene (`cxsd`) nicht zusammen. **Suspend-Then-Hibernate** löst das Problem elegant, indem nach 15 Minuten 0,00 Watt verbraucht werden.
+
+### Was ist die 73,4 MB große Datei `Persisted_Capsules.bin` in der EFI-Partition?
+Hex-Analysen zeigen, dass 73.400.306 von 73.400.320 Bytes reine Nullen (`0x00`) sind. Es handelt sich um einen ab Werk reservierten Puffer für künftige UEFI-Kapseln, nicht um ein fehlgeschlagenes oder anstehendes Update.

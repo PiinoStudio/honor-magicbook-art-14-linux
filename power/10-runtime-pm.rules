@@ -1,0 +1,4 @@
+# Enable Runtime Power Management for Qualcomm USB controllers, PHYs, and PCIe devices
+ACTION=="add", SUBSYSTEM=="platform", KERNEL=="*.usb", ATTR{power/control}="auto", ATTR{power/wakeup}="disabled"
+ACTION=="add", SUBSYSTEM=="platform", KERNEL=="*.phy", ATTR{power/control}="auto"
+ACTION=="add", SUBSYSTEM=="pci", ATTR{power/control}="auto"
