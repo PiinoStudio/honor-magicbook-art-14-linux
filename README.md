@@ -27,7 +27,14 @@
 - **Wireless & Networking:** Qualcomm FastConnect 7800 Wi-Fi 7 (`ath12k_wifi7_pci`) and Bluetooth.
 - **Input & Power:** Multitouch trackpad, keyboard backlight, battery status monitoring and charging management via `qcom-battmgr`.
 - **Lid Sensor & Display Suspend:** Hardware Hall-effect lid switch (`gpio-keys` on TLMM GPIO 92) automatically turns off display and suspends the laptop when the lid is closed.
-- **0.00W Deep Sleep (Suspend-Then-Hibernate):** Instant wake for short breaks (`s2idle`) + automated transition to disk hibernation (0W power draw) after 15 minutes of inactivity, solving the platform standby battery drain.
+- **True Deep Sleep (`s2idle` @ 0.389W) & >150h Battery Standby:** Native Qualcomm Snapdragon X Elite deep sleep breakthrough! Standby power consumption dropped from **~10W down to 0.389W (389 mW)**, extending standby endurance from 6 hours to **over 150 hours (>6 days)** with rock-solid, instant resume:
+  - Complete DDR interconnect zero-vote collapse (`MC0`, `SH0`, `SH1`, `SN0`, `CN0`, `QUP0`, `QUP1`, `ACV`, `PCIE_ANOC` -> `0x0`).
+  - Core voltage rail shutdown in `dpm_suspend_noirq` (`cx.lvl`, `mx.lvl`, `mmcx.lvl` -> `0.0V`).
+  - Hardware DRIPS (`power-domain-system`, `0x0200c354`) entry.
+  - EL1 Physical Timer Mirroring preventing TrustZone IRQ 30 freezes.
+  - PCIe Root Port `bridge_d3 = 1` hotplug fix.
+  - Automated Wi-Fi safe suspend/resume and USB flapping filter.
+- **0.00W Deep Hibernation (Optional):** Automated transition to disk hibernation (`suspend-then-hibernate`, 0W power draw) for multi-week shelf storage.
 - **Windows 11 Dual-Boot:** Reliable UEFI GRUB chainloading configuration to dual-boot Windows 11 ARM64 alongside Linux.
 - **Microphone Ghost Mute Fix:** Udev rule suppresses bogus `KEY_MICMUTE` repeat storms emitted by the touchscreen I2C firmware interface (`2808:5662 UNKNOWN`).
 - **RTC Clock Persistence:** Automated fallback service preserves the system clock across reboots, preventing offline package update failures caused by future OpenPGP signature timestamps.
@@ -56,12 +63,20 @@
 │   ├── build-install.sh
 │   └── apply-patch.sh
 ├── power/
-│   ├── setup_suspend_hibernate.sh          # One-click installer for 0W deep hibernation & power savers
-│   ├── snapdragon-power-saver.sh           # Suspend hook disabling USB wake locks and Wi-Fi drain
-│   ├── 10-runtime-pm.rules                 # Persistent udev runtime power management rules
-│   ├── hibernate.conf                      # systemd-sleep policy (15min timeout to hibernate)
-│   ├── lid.conf                            # systemd-logind policy (suspend-then-hibernate)
-│   └── setup_lid.sh                        # Unmasks suspend targets and installs lid configuration
+│   ├── honor_deep_sleep_fix/       # Kernel module for EL1 timer mirroring, genpd sync, bridge_d3, LDO hold
+│   │   ├── honor_deep_sleep_fix.c
+│   │   └── Makefile
+│   ├── setup_deep_sleep.sh         # One-click installer for 0.389W native deep sleep
+│   ├── 92-snapdragon-wakeup.rules  # Udev rules suppressing flapping USB devices & spurious wakes
+│   ├── honor-sleep.conf            # /etc/modules-load.d/ autoload configuration
+│   ├── snapdragon-power-saver.sh   # System-sleep hook for PCIe Wi-Fi safe suspend & runtime PM
+│   ├── setup_suspend_hibernate.sh  # (Optional) One-click installer for 0W deep hibernation
+│   ├── 10-runtime-pm.rules         # Persistent udev runtime power management rules
+│   ├── hibernate.conf              # systemd-sleep policy (15min timeout to hibernate)
+│   ├── lid.conf                    # systemd-logind policy (suspend-then-hibernate)
+│   └── setup_lid.sh                # Unmasks suspend targets and installs lid configuration
+├── docs/
+│   └── DEEP_SLEEP_BREAKTHROUGH.md  # Detailed technical log, ftrace analysis, and power measurements
 ├── input/
 │   ├── 99-ignore-ghost-micmute.rules       # Udev rule to silence touchscreen mic-mute spam
 │   └── setup_input.sh                      # One-click installation for input fix
@@ -156,22 +171,37 @@ Or open **GNOME Settings → Users → Fingerprint Login** to add your prints.
 
 ---
 
-### 5. Enable Lid Suspend, Standby Power Savers & 0W Hibernation
+### 5. Enable True Deep Sleep (<0.39W), Lid Suspend & Power Savers
 
-Qualcomm Snapdragon X Elite platforms currently rely on `s2idle` (Suspend-to-Idle), which draws ~2W because several peripheral drivers and the Embedded Controller maintain active voltage retention votes. To solve backpack heating and battery drain over hours, we provide **Suspend-Then-Hibernate**:
+Qualcomm Snapdragon X Elite platforms previously suffered from severe standby battery drain (~10W, draining the battery in ~6 hours) due to unresolved TrustZone timer freezes, unreleased interconnect and voltage domain votes, PCIe root port hotplug locks, and missing clock controllers.
 
-#### Option A: Quick Power-Saver Setup (Lid Switch + Standby Hooks)
+With our breakthrough `honor_deep_sleep_fix` module and tuning suite, the laptop achieves **true deep sleep (`s2idle`) consuming only ~0.389W (extending battery life to >150 hours / over 6 days)** with instant, 100% reliable wake.
+
+#### Option A: True Deep Sleep Setup (Recommended)
+```bash
+cd power
+chmod +x setup_deep_sleep.sh
+./setup_deep_sleep.sh
+```
+What this installs:
+1. Compiles and installs `honor_deep_sleep_fix.ko` with:
+   - EL1 Physical Timer Mirroring (`CNTV` -> `CNTP` with `CTL_MASK`).
+   - PCIe Root Port `0004:00:00.0` `bridge_d3 = 1` fix (collapsing PCIe interconnect votes from 1 kB/s to 0).
+   - Dynamic power domain sync for GCC and GPUCC clock controllers.
+   - System-sleep-only governor for `power-domain-system` (`0x0200c354`, DRIPS).
+   - USB-C LDO hold for stability.
+2. Autoloading `/etc/modules-load.d/honor-sleep.conf` (ensures `videocc-sm8550` and `honor_deep_sleep_fix` load at boot).
+3. Udev rules (`92-snapdragon-wakeup.rules`) disabling spurious wakeups and silencing the flapping FPC fingerprint USB sensor.
+4. System-sleep power-saver hook (`snapdragon-power-saver.sh`) powering down Wi-Fi before sleep to prevent PCIe L2 timeouts and reconnecting automatically upon wake.
+
+#### Option B: Standby Power-Saver Hooks & Lid Switch Only
 ```bash
 cd power
 chmod +x setup_lid.sh
 ./setup_lid.sh
 ```
-This installs:
-- Hall-effect lid sensor sleep trigger.
-- Sleep hooks that disable USB wake locks and cut Wi-Fi radio during sleep.
-- Udev rules enforcing runtime PM `auto` on USB and PCIe controllers.
 
-#### Option B: Full 0.00W Deep Hibernation (`suspend-then-hibernate`)
+#### Option C: 0.00W Deep Hibernation (`suspend-then-hibernate` for multi-week storage)
 ```bash
 cd power
 chmod +x setup_suspend_hibernate.sh
