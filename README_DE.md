@@ -14,15 +14,14 @@
 - **Fingerprint:** Biometrische Anmeldung & `sudo` über den integrierten Sensor (`10a5:9924 FPC`).
 - **Konnektivität:** Wi-Fi 7 (FastConnect 7800 / `ath12k`), Bluetooth.
 - **Eingabe & Energie:** Multitouch-Touchpad, Tastaturbeleuchtung, Akkustandsanzeige & Ladekontrolle (`qcom-battmgr`).
-- **Deckelsensor (Lid Switch) & Display-Aus:** Echter Hardware Hall-Sensor (`gpio-keys` auf TLMM GPIO 92) schaltet beim Zuklappen das Display sofort aus und versetzt das Notebook in den Standby.
-- **Echter Deep Sleep (`s2idle` @ 0,389W) & >150h Akkulaufzeit:** Durchbruch beim Snapdragon X Elite Standby! Leistungsaufnahme im Ruhezustand von **~10W auf 0,389W (389 mW)** gesenkt – Akkulaufzeit im Standby steigt von 6 Stunden auf **über 150 Stunden (>6 Tage)** bei sofortigem, 100% stabilem Aufwachen:
-  - Vollständiger DDR-Interconnect Kollaps im Sleep-TCS (`MC0`, `SH0`, `SH1`, `SN0`, `CN0`, `QUP0`, `QUP1`, `ACV`, `PCIE_ANOC` auf `0x0`).
-  - Spannungsdomänen schalten in `dpm_suspend_noirq` komplett ab (`cx.lvl`, `mx.lvl`, `mmcx.lvl` auf `0,0V`).
-  - Hardware-DRIPS (`power-domain-system`, `0x0200c354`) wird sauber betreten.
-  - EL1 Physical Timer Mirroring verhindert TrustZone IRQ 30 Freezes.
-  - PCIe Root Port `bridge_d3 = 1` Hotplug-Fix.
-  - Automatisches WLAN-Powerdown vor Standby und USB-Flapping-Filter.
-- **0,00W Tiefschlaf (Optional):** Automatischer Wechsel in den Festplatten-Ruhezustand (`suspend-then-hibernate`, 0W) für wochenlanges Lagern ohne Akkuverlust.
+- **Deckelsensor (Lid Switch) & Display-Aus:** Echter Hardware Hall-Sensor (`gpio-keys` auf TLMM GPIO 92) mit 20 ms Hardware-Entprellung versetzt das Notebook beim Zuklappen in den Standby und weckt es beim Aufklappen sofort wieder auf.
+- **Power Management & Suspend-Optimierung (`s2idle` / S4):** Umfassende Energiespar-Anpassungen:
+  - PCIe Root Port Bandbreitenreduktion im Sleep (`bridge_d3 = 0` verhindert DWC L2 Timeout Abbrüche).
+  - Dynamischer Power Domain Sync für GCC und GPUCC Clock-Controller.
+  - Reduktion der Interconnect Sleep-Votes auf 0 MB/s.
+  - Automatisches WLAN-Powerdown vor dem Standby und USB-Flapping-Filter.
+- **0,00W Tiefschlaf (`suspend-then-hibernate`, Empfohlen):** Automatischer Wechsel in den Festplatten-Ruhezustand (`suspend-then-hibernate`, 0,00W Leistungsaufnahme) für zuverlässigen Schutz vor Akkuentladung im Alltag und bei längerer Lagerung.
+- **EL2-Boot & Hardware-DRIPS Forschung:** Vorbereitung und Fahrplan zur Umgehung des Qualcomm Gunyah Hypervisors via `slbounce`, um echten Hardware-Deep-Sleep (`cxsd` / `ddr` Kollaps) auf EL2 zu erreichen.
 - **Windows 11 Dual-Boot:** Vollständiger UEFI GRUB Chainloader für paralleles Booten von Windows 11 ARM64 und Linux.
 - **Mikrofon Ghost-Mute Fix:** Udev-Regel unterdrückt ständige Phantom-Lautstärke/Mute-Popups, die von der Touchscreen-Firmwareschnittstelle (`2808:5662 UNKNOWN`) geflutet werden.
 - **RTC-Uhrzeit-Persistenz & System-Updates:** Automatischer Fallback-Dienst sichert die Uhrzeit über Neustarts hinweg, sodass Offline-System-Updates (z. B. GNOME Software / DNF5) nicht mehr an angeblich in der Zukunft liegenden GPG-Paketsignaturen scheitern.
@@ -136,44 +135,48 @@ fprintd-enroll
 
 ---
 
-### 5. Echten Deep Sleep (<0,39W), Deckelsensor & Stromsparer einrichten
+### 5. Standby, Deckelsensor & Stromsparer einrichten
 
-Bisher litten Snapdragon X Elite Geräte unter Linux unter erheblichem Standby-Verbrauch (~10W, Akku nach ca. 6 Stunden leer), da TrustZone-Timer blockierten, Interconnect-Votes offen blieben, PCIe-Root-Ports in D0 feststeckten und Video-Clock-Controller fehlten.
+Auf Snapdragon X Elite Laptops, die unter dem werksseitigen Qualcomm Gunyah Hypervisor (EL1) laufen, kann reguläres Linux-`s2idle` die physischen SoC-Stromschienen nicht abschalten (`cxsd` und `ddr` verbleiben bei 0 wegen Gunyahs VM-State-Aggregation). Im reinen `s2idle` zieht das System daher weiterhin ~3 bis 8 Watt.
 
-Mit dem neuen Kernelmodul `honor_deep_sleep_fix` und unseren Tuning-Skripten sinkt der Standby-Verbrauch auf **sensationelle 0,389W (Akkulaufzeit im Standby >150 Stunden / über 6 Tage)** bei sofortigem, fehlerfreiem Aufwachen!
+Für den produktiven Alltag ist daher **Option A (`suspend-then-hibernate`) die empfohlene Lösung**: Das Notebook geht beim Zuklappen sofort schlafen und wechselt nach wenigen Minuten automatisch auf die Festplatte, wodurch der Verbrauch auf echte **0,00 Watt** sinkt.
 
-#### Option A: Echten Deep Sleep aktivieren (Empfohlen)
-```bash
-cd power
-chmod +x setup_deep_sleep.sh
-./setup_deep_sleep.sh
-```
-Was dieses Skript tut:
-1. Baut und installiert `honor_deep_sleep_fix.ko` mit:
-   - EL1 Physical Timer Mirroring (`CNTV` -> `CNTP` mit `CTL_MASK`).
-   - PCIe Root Port `0004:00:00.0` `bridge_d3 = 1` Fix (senkt PCIe DDR-Interconnect-Votes auf 0).
-   - Dynamic Power-Domain Synchronisation für GCC und GPUCC Clock-Controller.
-   - System-Sleep-Only Governor für `power-domain-system` (`0x0200c354`, DRIPS).
-   - USB-C LDO Hold für felsenfeste Stabilität.
-2. Richtet `/etc/modules-load.d/honor-sleep.conf` ein (lädt `videocc-sm8550` und `honor_deep_sleep_fix` automatisch beim Booten).
-3. Installiert Udev-Regeln (`92-snapdragon-wakeup.rules`), die Phantom-Wakeups verhindern und den flatternden USB-Fingerprint-Reader stilllegen.
-4. Installiert den Sleep-Hook (`snapdragon-power-saver.sh`), der das WLAN vor dem Suspend schont und nach dem Aufwachen automatisch reaktiviert.
-
-#### Option B: Schnelles Basis-Standby (Nur Deckelschalter & USB/WLAN-Sparer)
-```bash
-cd power
-chmod +x setup_lid.sh
-./setup_lid.sh
-```
-
-#### Option C: Vollständiger 0,00W Tiefschlaf (`suspend-then-hibernate` für wochenlanges Lagern)
+#### Option A: 0,00W Tiefschlaf (`suspend-then-hibernate`, Empfohlen)
 ```bash
 cd power
 chmod +x setup_suspend_hibernate.sh
 ./setup_suspend_hibernate.sh
 ```
 Was dieses Skript tut:
-1. Erstellt eine unkomprimierte 34 GB Swapdatei auf Btrfs (`/swap/swapfile`).
+1. Erstellt eine unkomprimierte 34 GB Swapdatei auf Btrfs (`/swap/swapfile`) und berechnet die Resume-Parameter für den Kernel.
+2. Aktualisiert das `dracut`-Initramfs mit dem `resume`-Modul.
+3. Konfiguriert die systemd-Sleep-Policies:
+   - Sofortiger Standby (`s2idle`) beim Zuklappen des Deckels.
+   - Automatischer Wechsel in den Ruhezustand nach 15 Minuten (**0,00 W Leistungsaufnahme**).
+   - Schnelles Aufwachen (~3 Sekunden) beim Drücken der Powertaste.
+
+#### Option B: Basis-Standby & Deckelschalter (`s2idle`)
+```bash
+cd power
+chmod +x setup_lid.sh
+./setup_lid.sh
+```
+
+#### Option C: Natives Power-Management Kernelmodul (`honor_deep_sleep_fix.ko`)
+```bash
+cd power
+chmod +x setup_deep_sleep.sh
+./setup_deep_sleep.sh
+```
+Was dieses Modul tut:
+1. Baut und installiert `honor_deep_sleep_fix.ko` mit:
+   - PCIe Root Port `0004:00:00.0` `bridge_d3 = 0` Fix (verhindert DWC L2 Timeout Abbrüche).
+   - Dynamic Power-Domain Synchronisation für GCC und GPUCC Clock-Controller.
+   - System-Sleep-Only Governor für `power-domain-system` (`0x0200c354`, DRIPS).
+   - USB-C LDO Hold für felsenfeste Stabilität.
+2. Richtet `/etc/modules-load.d/honor-sleep.conf` ein (lädt `videocc-sm8550` und `honor_deep_sleep_fix` automatisch beim Booten).
+3. Installiert Udev-Regeln (`92-snapdragon-wakeup.rules`), die Phantom-Wakeups verhindern und den flatternden USB-Fingerprint-Reader stilllegen.
+4. Installiert den Sleep-Hook (`snapdragon-power-saver.sh`), der das WLAN vor dem Suspend schont und nach dem Aufwachen automatisch reaktiviert.
 2. Bindet das `resume`-Modul in Dracut ein und baut das Initramfs neu.
 3. Richtet systemd so ein, dass beim Zuklappen sofort `s2idle` aktiv wird, und nach 15 Minuten Inaktivität automatisch in den **vollständig stromlosen Ruhezustand (0,00W)** gewechselt wird.
 4. Beim Aufklappen/Starten ist das System in **ca. 3 Sekunden** von der UFS-SSD wieder voll da.
