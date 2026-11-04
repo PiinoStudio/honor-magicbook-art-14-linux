@@ -288,6 +288,9 @@ This project stands on the shoulders of giants in the Linux, Qualcomm, and open-
   - **Douglas Anderson** and upstream contributors for the generic `panel-edp` driver framework.
 - **Device Tree & Community:**
   - The **Linaro Qualcomm Working Group** and the broader Snapdragon X Elite Linux community for ongoing reverse-engineering and bring-up work on ARM64 laptops.
+- **Power Management & Deep Sleep Research:**
+  - **[justririll](https://github.com/justririll)** for pioneering the [x1e-sleep](https://github.com/justririll/x1e-sleep) project on Snapdragon X Elite (`X1E80100`), uncovering the ADSP Modern Standby GLINK interface (`qcom_adsp_pwr_lmts`), and demonstrating hardware low-power states.
+  - **[n1c0la84](https://github.com/n1c0la84)** for the in-depth [book4-edge-linux](https://github.com/n1c0la84/book4-edge-linux) power investigations comparing EL1/Gunyah vs. EL2/slbounce suspend architectures and LPASS macro runtime PM fixes.
 
 ---
 

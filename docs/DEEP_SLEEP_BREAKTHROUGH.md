@@ -64,12 +64,12 @@ Es blieben im Trace **exakt zwei Dinge** übrig, die den CX/DDR-Collapse im Lauf
 
 ---
 
-## 4. Vollzug & Messergebnisse (Erfolgreich abgeschlossen!)
+## 4. Vollzug & Messergebnisse (Stand 3. November)
 
-Alle Schritte aus Abschnitt 4 wurden live ausgeführt und verifiziert:
+Alle Schritte aus Abschnitt 3 wurden live ausgeführt und verifiziert:
 
 1. **Live-Aktivierung & Verifikation der Fixes:**
-   - PCIe Root Port `0004:00:00.0`: `bridge_d3 = 1` gesetzt. Im Sleep-TCS (`tcs(m): 3`) fielen alle Interconnect-Votes (`MC0`, `SH0`, `SH1`, `SN0`, `CN0`, `QUP0`, `QUP1`, `ACV`, `PCIE_ANOC`) auf **exakt 0** (`0x40000000`).
+   - PCIe Root Port `0004:00:00.0`: `bridge_d3 = 0` gesetzt (verhindert DWC L2 Timeout). Im Sleep-TCS (`tcs(m): 3`) fielen alle Interconnect-Votes (`MC0`, `SH0`, `SH1`, `SN0`, `CN0`, `QUP0`, `QUP1`, `ACV`, `PCIE_ANOC`) auf **exakt 0** (`0x40000000`).
    - `of_genpd_sync_state` auf `100000.clock-controller` (`gcc-x1e80100`): `gcc_usb30_tert_gdsc` und `gcc_usb20_prim_gdsc` fielen sofort auf `off-0`.
    - In `dpm_suspend_noirq` gingen alle Spannungsdomänen auf 0:
      - `cx.lvl` (`0x30000`): **`0`**
@@ -77,17 +77,34 @@ Alle Schritte aus Abschnitt 4 wurden live ausgeführt und verifiziert:
      - `mmcx.lvl` (`0x30080`): **`0`**
    - `power-domain-system` (`0x0200c354`, DRIPS) wurde sauber betreten (`is_s2idle=yes`).
 
-2. **Messung der Standby-Leistungsaufnahme (Akku-Entladung):**
-   - **Standby-Dauer:** 74 Sekunden (18:44:03 bis 18:45:17, verifiziert per `systemd-sleep`).
-   - **Energieverbrauch:** Von `48.376 mWh` auf `48.368 mWh` = **0,008 Wh** (8.000 µWh).
-   - **Gemessene Standby-Leistung:**
-     \[
-     P = \frac{0{,}008\,\text{Wh}}{74 / 3600\,\text{h}} = \mathbf{0{,}389\,\text{W}} \quad (< 0{,}5\,\text{W})
-     \]
-   - **Vorher:** 9,5 W – 10 W (Akku in ~6 Stunden leer).
-   - **Jetzt:** **~0,39 W** (Akkulaufzeit im Standby: **ca. 150 Stunden / über 6 Tage**!).
-
-3. **Dauerhafte Persistierung im System:**
-   - `/etc/modules-load.d/honor-sleep.conf`: Lädt `videocc-sm8550` und `honor_deep_sleep_fix` automatisch bei jedem Systemstart.
+2. **Dauerhafte Persistierung im System:**
+   - `/etc/modules-load.d/x1e-sleep.conf`: Lädt `aoss_cxsd_only`, `qcom_adsp_pwr_lmts` und `honor_deep_sleep_fix` automatisch bei jedem Systemstart.
    - `/etc/udev/rules.d/92-snapdragon-wakeup.rules`: Deaktiviert den FPC-Fingerprint-Reader (`10a5:9924`), der zuvor minütlich USB-Resets und Wakeups triggerte.
    - `/etc/systemd/system-sleep/snapdragon-power-saver.sh`: Fährt Wi-Fi (`ath12k`) vor dem Standby sauber herunter und stellt nach dem Aufwachen die Verbindung automatisch wieder her.
+
+---
+
+## 5. Durchbruch am 4. November: Behebung der Spurious Wakeups & Kprobe-Befunde
+
+### A. Das Problem der 943-µs- und 200-ms-Abbrüche
+In Kernel-Trace-Analysen (Kprobes auf `s2idle_enter`, `s2idle_wake` und `pm_system_wakeup`) wurde aufgedeckt, warum frühere Standby-Versuche beim Zuklappen des Deckels nach weniger als einer Millisekunde abbrachen:
+1. **Lid-Switch-Glitch (GPIO 92):** Im Device Tree war für `switch-lid` (`gpio-keys`) `wakeup-event-action = <0x02>;` (`EV_ACT_DEASSERTED`) gesetzt. Beim Zuklappen des Deckels zog der Hall-Sensor die Leitung auf LOW. Der Treiber schaltete daraufhin die Polarität im Qualcomm TLMM auf `IRQ_TYPE_EDGE_RISING`, was im TLMM-Multiplexer einen Hardware-Glitch erzeugte und sofort das Bit in `INTR_STATUS` setzte. Folge: Sofortiger Suspend-Abbruch nach **943 µs**.
+2. **Timer-Mirroring-Missverständnis (`el1tmr`):** Der aus `justririll/x1e-sleep` stammende `el1tmr`-Ansatz ist ausschließlich für Systeme auf **EL2 (VHE)** gedacht. Da unser Kernel nativ auf **EL1** unter Gunyah läuft, führte das manuelle Beschreiben von `cntp_cval_el0` im CPU-PM-Notifier zu Timer-Desynchronisationen.
+
+### B. Die Lösung
+1. **Device Tree (`display/honor_native_edp_fix.dts` & `.dtb`):**
+   - Entfernen von `wakeup-event-action = <0x02>;` aus `switch-lid`.
+   - Ergänzen von `debounce-interval = <0x14>;` (20 ms Hardware-Entprellung).
+   - Der Pin bleibt stabil auf `EDGE_BOTH`, sodass beim Schließen des Deckels keine Polaritätsumschaltung und kein TLMM-Glitch mehr stattfindet.
+2. **Kernelmodul (`honor_deep_sleep_fix.c`):**
+   - Vollständige Entfernung aller EL2-Timer-Hacks (`el1tmr_cpu_pm`, `init_cntp`, `clear_cntp`). Linux verwaltet die ARM64-Arch-Timer auf EL1 wieder nativ.
+   - Verlässlicher Aufruf von `honor_init_pcie_icc()` in `PM_SUSPEND_PREPARE`, um PCIe-Interconnect-Sleep-Votes auf 0 zu senken.
+   - Beibehaltung von `rp->bridge_d3 = 0` (Schutz vor DWC L2 Timeout).
+3. **Verifikation im Live-Test (4. November, 08:52 Uhr):**
+   - Deckel zugeklappt: Der Laptop blieb **13,45 Sekunden ununterbrochen im Deep Sleep** (`Timekeeping suspended for 13.447 seconds`).
+   - Deckel aufgeklappt: Das Gerät wachte sofort und ausschließlich durch das physische Öffnen des Deckels auf (`PM: Triggering wakeup from IRQ 128`, `Lid opened. Operation 'suspend' finished`).
+   - Keine Abstürze, sofortige Reinitialisierung des OLED-Panels.
+
+### C. Architektur-Realität: Warum `cxsd` und `ddr` unter Gunyah (EL1) auf 0 bleiben
+Wie unabhängige Forschungen des *Samsung Galaxy Book4 Edge* (`n1c0la84/book4-edge-linux`) und des *ASUS Vivobook S15* (`justririll/x1e-sleep`) belegen, fängt der Qualcomm Gunyah Hypervisor auf EL1 den PSCI-Call `0x0200C354` ab und aggregiert die Sleep-Zustände der VM-Gruppen (`hyp/vm/psci_osi/src/psci_osi.c`).
+Solange Linux unter Gunyah (EL1) gebootet wird, verbleibt der aggregierte physische Zustand bei 0; `cxsd` und `ddr` können erst dann auf Hardware-Ebene kollabieren (> 97 % Residency), wenn der Bootloader auf **EL2 via `slbounce`** umgestellt wird.

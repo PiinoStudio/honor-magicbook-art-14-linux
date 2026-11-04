@@ -4,14 +4,17 @@
 #include <linux/cpu_pm.h>
 #include <linux/cpumask.h>
 #include <linux/device.h>
+#include <linux/gpio/consumer.h>
 #include <linux/hrtimer.h>
 #include <linux/init.h>
+#include <linux/interconnect.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/ktime.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/pci.h>
+#include <linux/phy/phy.h>
 #include <linux/platform_device.h>
 #include <linux/pm.h>
 #include <linux/pm_domain.h>
@@ -19,6 +22,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/pm_wakeup.h>
 #include <linux/regulator/consumer.h>
+#include <linux/reset.h>
 #include <linux/smp.h>
 #include <linux/soc/qcom/qcom_aoss.h>
 #include <linux/suspend.h>
@@ -26,18 +30,10 @@
 #include <asm/arch_timer.h>
 #include <asm/sysreg.h>
 
-#define FAR_TICKS (1ULL << 44)
-#define CTL_EN    ARCH_TIMER_CTRL_ENABLE
-#define CTL_MASK  ARCH_TIMER_CTRL_IT_MASK
-
-static int wake_after_sec = 0;
-module_param(wake_after_sec, int, 0644);
-
 static int sync_all_suppliers = 1;
 module_param(sync_all_suppliers, int, 0644);
 
 static bool in_s2idle;
-static u64 s2idle_fallback_cval;
 
 /* 1. Regulators vreg_l2j_1p2 and vreg_l3j_0p8 kept on (usbc-ldo-always-on) */
 static struct regulator *reg_l2j;
@@ -98,7 +94,8 @@ static int honor_geni_suspend(struct device *dev)
 			return ret;
 	}
 	ret = pm_runtime_force_suspend(dev);
-	pr_info("honor_deep_sleep_fix: %s pm_runtime_force_suspend ret=%d\n",
+	dev_pm_genpd_set_performance_state(dev, 0);
+	pr_info("honor_deep_sleep_fix: %s pm_runtime_force_suspend ret=%d, pstate=0\n",
 		dev_name(dev), ret);
 	return ret;
 }
@@ -107,6 +104,7 @@ static int honor_geni_resume(struct device *dev)
 {
 	int ret = 0;
 
+	dev_pm_genpd_set_performance_state(dev, 128);
 	ret = pm_runtime_force_resume(dev);
 	if (ret)
 		return ret;
@@ -114,7 +112,7 @@ static int honor_geni_resume(struct device *dev)
 	if (orig_geni_pm && orig_geni_pm->resume)
 		ret = orig_geni_pm->resume(dev);
 
-	pr_info("honor_deep_sleep_fix: %s pm_runtime_force_resume ret=%d\n",
+	pr_info("honor_deep_sleep_fix: %s pm_runtime_force_resume ret=%d, pstate=128\n",
 		dev_name(dev), ret);
 	return ret;
 }
@@ -147,46 +145,8 @@ static void honor_unhook_geni_serial(void)
 	}
 }
 
-/* 3. EL1 Timer Mirroring (CNTV -> CNTP with CTL_MASK) */
-static void park_cntp(void)
-{
-	write_sysreg(__arch_counter_get_cntpct() + FAR_TICKS, cntp_cval_el0);
-	write_sysreg(CTL_EN | CTL_MASK, cntp_ctl_el0);
-	isb();
-}
-
-static int el1tmr_cpu_pm(struct notifier_block *nb, unsigned long action, void *v)
-{
-	u64 ctl, cval;
-
-	switch (action) {
-	case CPU_PM_ENTER:
-		ctl = read_sysreg(cntv_ctl_el0);
-		if ((ctl & CTL_EN) && !(ctl & CTL_MASK))
-			cval = read_sysreg(cntv_cval_el0);
-		else
-			cval = __arch_counter_get_cntpct() + FAR_TICKS;
-
-		if (READ_ONCE(in_s2idle) && wake_after_sec > 0 &&
-		    s2idle_fallback_cval > 0 && cval > s2idle_fallback_cval) {
-			cval = s2idle_fallback_cval;
-		}
-
-		write_sysreg(cval, cntp_cval_el0);
-		write_sysreg(CTL_EN | CTL_MASK, cntp_ctl_el0);
-		isb();
-		break;
-	case CPU_PM_ENTER_FAILED:
-	case CPU_PM_EXIT:
-		park_cntp();
-		break;
-	}
-	return NOTIFY_OK;
-}
-
-static struct notifier_block el1tmr_nb = { .notifier_call = el1tmr_cpu_pm };
-
 static void honor_enable_pcie_bridge_d3(void);
+static void honor_init_pcie_icc(void);
 static void honor_sync_remaining_suppliers(void);
 
 static int honor_pm_notify(struct notifier_block *nb, unsigned long mode, void *unused)
@@ -194,21 +154,12 @@ static int honor_pm_notify(struct notifier_block *nb, unsigned long mode, void *
 	switch (mode) {
 	case PM_SUSPEND_PREPARE:
 		honor_enable_pcie_bridge_d3();
+		honor_init_pcie_icc();
 		honor_sync_remaining_suppliers();
-		if (wake_after_sec > 0) {
-			u64 rate = read_sysreg(cntfrq_el0);
-			u64 now = __arch_counter_get_cntpct();
-			s2idle_fallback_cval = now + rate * (u64)wake_after_sec;
-			pr_info("honor_deep_sleep_fix: armed fallback timer for +%ds\n",
-				wake_after_sec);
-		} else {
-			s2idle_fallback_cval = 0;
-		}
 		WRITE_ONCE(in_s2idle, true);
 		break;
 	case PM_POST_SUSPEND:
 		WRITE_ONCE(in_s2idle, false);
-		s2idle_fallback_cval = 0;
 		break;
 	}
 	return NOTIFY_OK;
@@ -217,17 +168,6 @@ static int honor_pm_notify(struct notifier_block *nb, unsigned long mode, void *
 static struct notifier_block honor_pm_nb = {
 	.notifier_call = honor_pm_notify,
 };
-
-static void init_cntp(void *info)
-{
-	park_cntp();
-}
-
-static void clear_cntp(void *info)
-{
-	write_sysreg(0, cntp_ctl_el0);
-	isb();
-}
 
 /* 4. Unprepare unused syscon bi_tcxo clocks */
 static const char * const syscon_devs[] = {
@@ -308,6 +248,11 @@ static struct dev_power_governor honor_sys_gov;
 
 static bool honor_never_power_down_ok(struct dev_pm_domain *pd)
 {
+	if (READ_ONCE(in_s2idle)) {
+		if (orig_sys_gov && orig_sys_gov->power_down_ok)
+			return orig_sys_gov->power_down_ok(pd);
+		return true;
+	}
 	return false;
 }
 
@@ -332,14 +277,14 @@ static void honor_setup_system_sleep_only(void)
 	put_device(dev);
 }
 
-/* 8. Force bridge_d3 = 1 on PCIe root port 0004:00:00.0 (same as pcie_port_pm=force) */
+/* 8. Keep bridge_d3 = 0 on PCIe root port 0004:00:00.0 (prevents DWC L2 timeout abort) */
 static void honor_enable_pcie_bridge_d3(void)
 {
 	struct pci_dev *rp = pci_get_domain_bus_and_slot(4, 0, 0);
 
 	if (rp) {
-		rp->bridge_d3 = 1;
-		pr_info("honor_deep_sleep_fix: enabled bridge_d3=1 on PCIe RP 0004:00:00.0\n");
+		rp->bridge_d3 = 0;
+		pr_info("honor_deep_sleep_fix: disabled bridge_d3 on PCIe RP 0004:00:00.0 (prevent L2 timeout)\n");
 		pci_dev_put(rp);
 	}
 }
@@ -385,6 +330,108 @@ static void honor_sync_remaining_suppliers(void)
 	}
 }
 
+/* 10. Control pcie-mem interconnect bandwidth (drop to 0 on suspend, Gen 1 on runtime) */
+struct qcom_pcie_resources_1_0_0 {
+	struct clk_bulk_data *clks;
+	int num_clks;
+	struct reset_control *core;
+	struct regulator *vdda;
+};
+
+#define QCOM_PCIE_2_1_0_MAX_RESETS		6
+#define QCOM_PCIE_2_1_0_MAX_SUPPLY		3
+struct qcom_pcie_resources_2_1_0 {
+	struct clk_bulk_data *clks;
+	int num_clks;
+	struct reset_control_bulk_data resets[QCOM_PCIE_2_1_0_MAX_RESETS];
+	int num_resets;
+	struct regulator_bulk_data supplies[QCOM_PCIE_2_1_0_MAX_SUPPLY];
+};
+
+#define QCOM_PCIE_2_3_2_MAX_SUPPLY		2
+struct qcom_pcie_resources_2_3_2 {
+	struct clk_bulk_data *clks;
+	int num_clks;
+	struct regulator_bulk_data supplies[QCOM_PCIE_2_3_2_MAX_SUPPLY];
+};
+
+#define QCOM_PCIE_2_3_3_MAX_RESETS		7
+struct qcom_pcie_resources_2_3_3 {
+	struct clk_bulk_data *clks;
+	int num_clks;
+	struct reset_control_bulk_data rst[QCOM_PCIE_2_3_3_MAX_RESETS];
+};
+
+#define QCOM_PCIE_2_4_0_MAX_RESETS		12
+struct qcom_pcie_resources_2_4_0 {
+	struct clk_bulk_data *clks;
+	int num_clks;
+	struct reset_control_bulk_data resets[QCOM_PCIE_2_4_0_MAX_RESETS];
+	int num_resets;
+};
+
+#define QCOM_PCIE_2_7_0_MAX_SUPPLIES		2
+struct qcom_pcie_resources_2_7_0 {
+	struct clk_bulk_data *clks;
+	int num_clks;
+	struct regulator_bulk_data supplies[QCOM_PCIE_2_7_0_MAX_SUPPLIES];
+	struct reset_control *rst;
+};
+
+struct qcom_pcie_resources_2_9_0 {
+	struct clk_bulk_data *clks;
+	int num_clks;
+	struct reset_control *rst;
+};
+
+union qcom_pcie_resources {
+	struct qcom_pcie_resources_1_0_0 v1_0_0;
+	struct qcom_pcie_resources_2_1_0 v2_1_0;
+	struct qcom_pcie_resources_2_3_2 v2_3_2;
+	struct qcom_pcie_resources_2_3_3 v2_3_3;
+	struct qcom_pcie_resources_2_4_0 v2_4_0;
+	struct qcom_pcie_resources_2_7_0 v2_7_0;
+	struct qcom_pcie_resources_2_9_0 v2_9_0;
+};
+
+struct qcom_pcie {
+	void *pci;
+	void __iomem *parf;
+	void __iomem *mhi;
+	union qcom_pcie_resources res;
+	struct icc_path *icc_mem;
+	struct icc_path *icc_cpu;
+};
+
+static struct icc_path *honor_pcie_icc_mem;
+
+static void honor_init_pcie_icc(void)
+{
+	struct device *dev = bus_find_device_by_name(&platform_bus_type, NULL, "1c08000.pcie");
+	struct qcom_pcie *pcie;
+
+	if (!dev)
+		return;
+
+	pcie = dev_get_drvdata(dev);
+	if (pcie && pcie->icc_mem) {
+		honor_pcie_icc_mem = pcie->icc_mem;
+		icc_set_tag(honor_pcie_icc_mem, 3); /* ACTIVE | WAKE only (no SLEEP vote) */
+		icc_set_bw(honor_pcie_icc_mem, 0, 250000); /* Gen 1 BW (250 MB/s) */
+		pr_info("honor_deep_sleep_fix: configured pcie-mem icc tag=3, bw=250000\n");
+	}
+	put_device(dev);
+}
+
+static void honor_exit_pcie_icc(void)
+{
+	if (honor_pcie_icc_mem) {
+		icc_set_tag(honor_pcie_icc_mem, 7);
+		icc_set_bw(honor_pcie_icc_mem, 0, 1969000);
+		honor_pcie_icc_mem = NULL;
+	}
+}
+
 static int __init honor_deep_sleep_init(void)
 {
 	int ret;
@@ -395,18 +442,11 @@ static int __init honor_deep_sleep_init(void)
 	honor_hold_usbc_ldos();
 	honor_hook_geni_serial();
 	honor_enable_pcie_bridge_d3();
-
-	on_each_cpu(init_cntp, NULL, 1);
+	honor_init_pcie_icc();
 
 	ret = register_pm_notifier(&honor_pm_nb);
 	if (ret)
 		return ret;
-
-	ret = cpu_pm_register_notifier(&el1tmr_nb);
-	if (ret) {
-		unregister_pm_notifier(&honor_pm_nb);
-		return ret;
-	}
 
 	honor_fix_syscon_clks();
 	honor_set_aoss_cxsd();
@@ -418,9 +458,8 @@ static int __init honor_deep_sleep_init(void)
 
 static void __exit honor_deep_sleep_exit(void)
 {
-	cpu_pm_unregister_notifier(&el1tmr_nb);
+	honor_exit_pcie_icc();
 	unregister_pm_notifier(&honor_pm_nb);
-	on_each_cpu(clear_cntp, NULL, 1);
 	honor_unhook_geni_serial();
 	honor_release_usbc_ldos();
 	if (sys_pd && orig_sys_gov)

@@ -219,3 +219,38 @@ Windows nutzt den monolithischen Treiber `qcpep8380.sys` (4,7 MB), der direkt ü
 
 ### Was ist die 73,4 MB große Datei `Persisted_Capsules.bin` in der EFI-Partition?
 Hex-Analysen zeigen, dass 73.400.306 von 73.400.320 Bytes reine Nullen (`0x00`) sind. Es handelt sich um einen ab Werk reservierten Puffer für künftige UEFI-Kapseln, nicht um ein fehlgeschlagenes oder anstehendes Update.
+
+---
+
+## 🤝 Upstream-Beitragsziele
+Das langfristige Ziel dieses Projekts ist es, diese Fixes (eDP Widebus-Unterstützung, DPU Dual-Mixer SSPP-Offset-Berechnung, Panel-Modeline und Device Tree) upstream an die offiziellen Linux-Kernel-Mailinglisten (`linux-arm-msm` und `dri-devel`) zu übermitteln, damit künftige Distributionen das Honor MagicBook Art 14 direkt ab Werk unterstützen.
+
+---
+
+## 🙏 Danksagungen & Credits
+
+Dieses Projekt baut auf der Arbeit herausragender Entwickler und Communities in den Linux-, Qualcomm- und Open-Source-Ökosystemen auf. Unser besonderer Dank gilt:
+
+- **Fingerabdrucksensor-Unterstützung (`10a5:9924`):**
+  - Besonderer Dank an **[Terrydaktal](https://github.com/Terrydaktal)** für das Reverse-Engineering der FPC-Sensor-Initialisierungssequenz (`0x12` + `0x14` + `0x90`) und die Entwicklung des [libfprint-fpc-10a5-9924](https://github.com/Terrydaktal/libfprint-fpc-10a5-9924)-Patches.
+  - Den Upstream-Maintainern von **[libfprint](https://gitlab.freedesktop.org/libfprint/libfprint)** auf freedesktop.org.
+- **Audio- & SoundWire-Subsystem:**
+  - **Srinivas Kandagatla** (Linaro / Qualcomm) und **Krzysztof Kozlowski** für die Entwicklung der ASoC AudioReach (`q6apm`), SoundWire (`soundwire_qcom`) und WSA884x-Verstärkertreiber im Mainline-Linux-Kernel.
+  - Den Maintainern des **[ALSA Project](https://github.com/alsa-project/alsa-ucm-conf)** und von **[linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git)** für die UCM2-Profile und AudioReach-Topologie-Frameworks.
+  - Dem Team von **[PipeWire](https://gitlab.freedesktop.org/pipewire/pipewire)** für Low-Latency-Audio und räumliches Quad-Speaker-Upmixing.
+  - **[EasyEffects](https://github.com/wwmm/easyeffects)** und **[LSP Plugins](https://lsp-plug.in/)** für DSP-Equalization und Lautstärkemanagement.
+- **Qualcomm Snapdragon Display & Grafik:**
+  - **Dmitry Baryshkov**, **Rob Clark** und dem Linux MSM DRM-Team für die Treiber der Snapdragon Display Processing Unit (`msm/dpu`) und des DisplayPorts (`msm/dp`).
+  - **Douglas Anderson** und Upstream-Contributors für das generische `panel-edp`-Treiber-Framework.
+- **Device Tree & Community:**
+  - Der **Linaro Qualcomm Working Group** und der breiteren Snapdragon X Elite Linux-Community für kontinuierliche Reverse-Engineering- und Bring-up-Arbeit auf ARM64-Laptops.
+- **Power Management & Deep Sleep-Forschung:**
+  - **[justririll](https://github.com/justririll)** für die Pionierarbeit im [x1e-sleep](https://github.com/justririll/x1e-sleep)-Projekt auf Snapdragon X Elite (`X1E80100`), das Aufdecken der ADSP Modern Standby GLINK-Schnittstelle (`qcom_adsp_pwr_lmts`) und den Nachweis von Hardware-Low-Power-Zuständen.
+  - **[n1c0la84](https://github.com/n1c0la84)** für die tiefgehenden Stromspar-Untersuchungen in [book4-edge-linux](https://github.com/n1c0la84/book4-edge-linux), den Vergleich der Suspend-Architekturen zwischen EL1/Gunyah und EL2/slbounce sowie LPASS-Macro-Runtime-PM-Fixes.
+
+---
+
+## 📄 Lizenz
+- Kernel-Patches und Device Trees stehen unter **GPL-2.0** / **BSD-2-Clause**.
+- Fingerabdruck-Patches sind unter **LGPL-2.1** lizenziert (analog zu Upstream-`libfprint`).
+

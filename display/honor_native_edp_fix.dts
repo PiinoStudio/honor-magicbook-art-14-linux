@@ -9431,7 +9431,7 @@
 			linux,input-type = <0x05>;
 			linux,code = <0x00>;
 			wakeup-source;
-			wakeup-event-action = <0x02>;
+			debounce-interval = <0x14>;
 		};
 	};
 
