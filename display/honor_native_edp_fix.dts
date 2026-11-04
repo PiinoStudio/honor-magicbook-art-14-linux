@@ -9430,7 +9430,6 @@
 			gpios = <0x62 0x5c 0x01>;
 			linux,input-type = <0x05>;
 			linux,code = <0x00>;
-			wakeup-source;
 			debounce-interval = <0x14>;
 		};
 	};
