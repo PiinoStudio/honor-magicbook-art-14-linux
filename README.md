@@ -26,15 +26,14 @@
 - **Fingerprint Reader:** Biometric authentication for system login and `sudo` elevation via the integrated `10a5:9924` Fingerprint Cards (FPC) match-on-host sensor.
 - **Wireless & Networking:** Qualcomm FastConnect 7800 Wi-Fi 7 (`ath12k_wifi7_pci`) and Bluetooth.
 - **Input & Power:** Multitouch trackpad, keyboard backlight, battery status monitoring and charging management via `qcom-battmgr`.
-- **Lid Sensor & Display Suspend:** Hardware Hall-effect lid switch (`gpio-keys` on TLMM GPIO 92) automatically turns off display and suspends the laptop when the lid is closed.
-- **True Deep Sleep (`s2idle` @ 0.389W) & >150h Battery Standby:** Native Qualcomm Snapdragon X Elite deep sleep breakthrough! Standby power consumption dropped from **~10W down to 0.389W (389 mW)**, extending standby endurance from 6 hours to **over 150 hours (>6 days)** with rock-solid, instant resume:
-  - Complete DDR interconnect zero-vote collapse (`MC0`, `SH0`, `SH1`, `SN0`, `CN0`, `QUP0`, `QUP1`, `ACV`, `PCIE_ANOC` -> `0x0`).
-  - Core voltage rail shutdown in `dpm_suspend_noirq` (`cx.lvl`, `mx.lvl`, `mmcx.lvl` -> `0.0V`).
-  - Hardware DRIPS (`power-domain-system`, `0x0200c354`) entry.
-  - EL1 Physical Timer Mirroring preventing TrustZone IRQ 30 freezes.
-  - PCIe Root Port `bridge_d3 = 1` hotplug fix.
+- **Lid Sensor & Display Suspend:** Hardware Hall-effect lid switch (`gpio-keys` on TLMM GPIO 92) with 20 ms hardware debouncing automatically suspends the laptop when closed and resumes instantly upon opening.
+- **Power Management & Suspend (`s2idle` / S4):** Comprehensive power optimizations:
+  - PCIe Root Port interconnect bandwidth reduction during sleep (`bridge_d3 = 0` preventing DWC L2 timeout aborts).
+  - Dynamic power domain sync for GCC and GPUCC clock controllers.
+  - Interconnect sleep vote reduction to 0 MB/s.
   - Automated Wi-Fi safe suspend/resume and USB flapping filter.
-- **0.00W Deep Hibernation (Optional):** Automated transition to disk hibernation (`suspend-then-hibernate`, 0W power draw) for multi-week shelf storage.
+- **0.00W Deep Hibernation (`suspend-then-hibernate`, Recommended):** Automated transition to disk hibernation (`suspend-then-hibernate`, 0.00W power draw) for overnight and multi-week shelf storage without battery drain.
+- **EL2 Boot & True Hardware DRIPS Research:** Documentation and roadmap for bypassing the Qualcomm Gunyah hypervisor via `slbounce` to achieve native EL2 hardware sleep (`cxsd` / `ddr` collapse).
 - **Windows 11 Dual-Boot:** Reliable UEFI GRUB chainloading configuration to dual-boot Windows 11 ARM64 alongside Linux.
 - **Microphone Ghost Mute Fix:** Udev rule suppresses bogus `KEY_MICMUTE` repeat storms emitted by the touchscreen I2C firmware interface (`2808:5662 UNKNOWN`).
 - **RTC Clock Persistence:** Automated fallback service preserves the system clock across reboots, preventing offline package update failures caused by future OpenPGP signature timestamps.
@@ -171,13 +170,34 @@ Or open **GNOME Settings → Users → Fingerprint Login** to add your prints.
 
 ---
 
-### 5. Enable True Deep Sleep (<0.39W), Lid Suspend & Power Savers
+### 5. Configure Suspend, Lid Switch & Power Savers
 
-Qualcomm Snapdragon X Elite platforms previously suffered from severe standby battery drain (~10W, draining the battery in ~6 hours) due to unresolved TrustZone timer freezes, unreleased interconnect and voltage domain votes, PCIe root port hotplug locks, and missing clock controllers.
+On Snapdragon X Elite laptops running under the factory Qualcomm Gunyah Hypervisor (EL1), regular Linux `s2idle` cannot collapse physical SoC power rails (`cxsd` and `ddr` stay at 0 due to Gunyah VM state aggregation). In pure `s2idle`, the laptop draws ~3 to 8W.
 
-With our breakthrough `honor_deep_sleep_fix` module and tuning suite, the laptop achieves **true deep sleep (`s2idle`) consuming only ~0.389W (extending battery life to >150 hours / over 6 days)** with instant, 100% reliable wake.
+Therefore, for real-world daily use, **Option A (`suspend-then-hibernate`) is the recommended configuration**: the laptop suspends instantly upon lid close, and transitions after a few minutes to disk hibernation, reducing battery drain to **0.00W**.
 
-#### Option A: True Deep Sleep Setup (Recommended)
+#### Option A: 0.00W Deep Hibernation (`suspend-then-hibernate`, Recommended)
+```bash
+cd power
+chmod +x setup_suspend_hibernate.sh
+./setup_suspend_hibernate.sh
+```
+What this does:
+1. Configures a 34GB Btrfs swapfile on `/swap/swapfile` and calculates kernel resume parameters.
+2. Updates `dracut` initramfs with the `resume` module.
+3. Sets systemd policies:
+   - Immediate `s2idle` upon lid close.
+   - Automatic hibernation to disk after 15 minutes of sleep (**0.00W power draw**).
+   - Fast resume (~3 seconds) upon pressing the power button.
+
+#### Option B: Standby Power-Saver Hooks & Lid Switch Only (`s2idle`)
+```bash
+cd power
+chmod +x setup_lid.sh
+./setup_lid.sh
+```
+
+#### Option C: Native Power-Management Kernel Module (`honor_deep_sleep_fix.ko`)
 ```bash
 cd power
 chmod +x setup_deep_sleep.sh
@@ -185,29 +205,13 @@ chmod +x setup_deep_sleep.sh
 ```
 What this installs:
 1. Compiles and installs `honor_deep_sleep_fix.ko` with:
-   - EL1 Physical Timer Mirroring (`CNTV` -> `CNTP` with `CTL_MASK`).
-   - PCIe Root Port `0004:00:00.0` `bridge_d3 = 1` fix (collapsing PCIe interconnect votes from 1 kB/s to 0).
+   - PCIe Root Port `0004:00:00.0` `bridge_d3 = 0` fix (preventing DWC L2 timeout aborts).
    - Dynamic power domain sync for GCC and GPUCC clock controllers.
    - System-sleep-only governor for `power-domain-system` (`0x0200c354`, DRIPS).
    - USB-C LDO hold for stability.
 2. Autoloading `/etc/modules-load.d/honor-sleep.conf` (ensures `videocc-sm8550` and `honor_deep_sleep_fix` load at boot).
 3. Udev rules (`92-snapdragon-wakeup.rules`) disabling spurious wakeups and silencing the flapping FPC fingerprint USB sensor.
 4. System-sleep power-saver hook (`snapdragon-power-saver.sh`) powering down Wi-Fi before sleep to prevent PCIe L2 timeouts and reconnecting automatically upon wake.
-
-#### Option B: Standby Power-Saver Hooks & Lid Switch Only
-```bash
-cd power
-chmod +x setup_lid.sh
-./setup_lid.sh
-```
-
-#### Option C: 0.00W Deep Hibernation (`suspend-then-hibernate` for multi-week storage)
-```bash
-cd power
-chmod +x setup_suspend_hibernate.sh
-./setup_suspend_hibernate.sh
-```
-What this does:
 1. Allocates an uncompressed, nocow 34GB swapfile on Btrfs (`/swap/swapfile`).
 2. Configures the kernel `resume` module in `dracut` and rebuilds the initramfs.
 3. Sets systemd to sleep instantly (`s2idle`) on lid close, and transition to **0.00W disk hibernation** after 15 minutes.

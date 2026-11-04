@@ -1,9 +1,8 @@
-# Handoff: Honor MagicBook Art 14 (X1E80100) Deep Sleep (`< 0.5 W`, CXSD / DDR Collapse)
+# Handoff & Status: Honor MagicBook Art 14 (X1E80100) Power Management & Deep Sleep Analysis
 
-## 1. System- & Zugangsdaten
+## 1. Systemdaten & Rahmenbedingungen
 - **Zielgerät:** Honor MagicBook Art 14 (`MRO-XXX`), Qualcomm Snapdragon X Elite (`X1E80100`), 32 GB RAM, 1 TB Micron UFS (`1d84000.ufshc`), Qualcomm WCN7850 Wi-Fi 7 (`0004:01:00.0` auf `1c08000.pcie`).
 - **OS & Kernel:** Fedora 45 aarch64, Kernel `7.2.11-300.fc45.aarch64`, läuft auf **EL1** unter dem Gunyah-Hypervisor (`CPU: All CPU(s) started at EL1`).
-- **SSH-Zugang:** `ssh pino@192.168.178.61` (Sudo-Passwort: `1`).
 - **WICHTIGE SICHERHEITSREGELN:**
   1. **NIEMALS Windows-Partitionen (`sda1`–`sda7`, `sda10`) anfassen!**
   2. **NIEMALS `regulator-always-on` von `regulator-misc-3p3` im DTB (`/boot/efi/dtb/honor_native_edp_fix.dtb` / `/home/pino/current_honor.dts`) entfernen!** Auf dem Honor Art 14 versorgt `regulator-misc-3p3` Touchpad (`2-005d`), Touchscreen (`0-0038`) und Tastatur (`1-003a`); das Entfernen führte zu einem Blackscreen beim Resume.
