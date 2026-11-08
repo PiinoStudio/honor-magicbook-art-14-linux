@@ -1,109 +1,83 @@
-# Handoff & Status: Honor MagicBook Art 14 (X1E80100) Power Management & Deep Sleep Analysis
+# Technical Post-Mortem: Power Management, `s2idle` & EL2 (`slbounce`) Findings on the Honor MagicBook Art 14 (X1E80100)
 
-## 1. Systemdaten & Rahmenbedingungen
-- **Zielgerät:** Honor MagicBook Art 14 (`MRO-XXX`), Qualcomm Snapdragon X Elite (`X1E80100`), 32 GB RAM, 1 TB Micron UFS (`1d84000.ufshc`), Qualcomm WCN7850 Wi-Fi 7 (`0004:01:00.0` auf `1c08000.pcie`).
-- **OS & Kernel:** Fedora 45 aarch64, Kernel `7.2.11-300.fc45.aarch64`, läuft auf **EL1** unter dem Gunyah-Hypervisor (`CPU: All CPU(s) started at EL1`).
-- **WICHTIGE SICHERHEITSREGELN:**
-  1. **NIEMALS Windows-Partitionen (`sda1`–`sda7`, `sda10`) anfassen!**
-  2. **NIEMALS `regulator-always-on` von `regulator-misc-3p3` im DTB (`/boot/efi/dtb/honor_native_edp_fix.dtb` / `~/current_honor.dts`) entfernen!** Auf dem Honor Art 14 versorgt `regulator-misc-3p3` Touchpad (`2-005d`), Touchscreen (`0-0038`) und Tastatur (`1-003a`); das Entfernen führte zu einem Blackscreen beim Resume.
-  3. **NIEMALS `rmmod honor_deep_sleep_fix` ausführen, nachdem bereits ein `s2idle`-Zyklus seit dem letzten Boot stattgefunden hat!** Nach dem ersten `s2idle` führt das Betreten von `power-domain-system` (`0x0200c354`, DRIPS) aus dem normalen **Runtime-Idle** sofort zu einem bekannten TrustZone-SoC-Freeze. Unser Modul verhindert Runtime-DRIPS über einen eigenen GenPD-Governor (`honor_sys_gov`); wird das Modul nach einem Suspend entladen, stellt es den Original-Governor wieder her und das SoC friert beim nächsten Runtime-Idle ein.
+> [!WARNING]
+> **Correction of Earlier Claims:**
+> Earlier revisions of this document claimed a `0.389 W` `s2idle` breakthrough and a working `suspend-then-hibernate` script. Subsequent systematic kernel testing (`pm_test=devices`, `pm_test=platform`, and live EL1/EL2 hardware traces) proved those claims false and uncovered critical pitfalls that caused the laptop either to hard-lock in sleep or to abort hibernation and overheat inside a closed backpack.
+>
+> This document records our **verified negative findings and root-cause analyses** so that other developers working on the Honor MagicBook Art 14 (`MRO-XXX`, Snapdragon X Elite `X1E80100`) do not repeat the same dead ends.
 
 ---
 
-## 2. Was bereits fertiggestellt, installiert und verifiziert ist
+## 1. Why Pure `s2idle` Cannot Achieve `< 0.5 W` on This Device Today
 
-Alle folgenden Module und Konfigurationen sind bereits für `7.2.11-300.fc45.aarch64` gebaut und unter `/lib/modules/7.2.11-300.fc45.aarch64/` installiert:
+### A. Running in EL1 (Factory Qualcomm Gunyah Hypervisor)
+- Under the factory boot chain, Linux boots at **EL1** beneath the Qualcomm Gunyah hypervisor (`CPU: All CPU(s) started at EL1`).
+- When Linux enters `s2idle` and issues PSCI `CPU_SUSPEND(0x0200c354)` (`power-domain-system` / DRIPS), Gunyah intercepts the PSCI call (`hyp/vm/psci_osi/src/psci_osi.c`) and aggregates virtual machine power states rather than handing direct control of the physical power rails to Linux.
+- As a result, `/sys/kernel/debug/qcom_stats/cxsd` and `/sys/kernel/debug/qcom_stats/ddr` remain at **`Count: 0`**, and actual standby power draw in `s2idle` remains at **~3 W to 8 W**.
 
-1. **LPASS Audio-Macro Runtime-PM-Fix (`lpass-macro-release-votes-in-runtime-suspend.patch`):**
-   - Gepatcht und installiert in `/lib/modules/7.2.11-300.fc45.aarch64/kernel/sound/soc/codecs/snd-soc-lpass-{rx,tx,wsa,va}-macro.ko` (Quellen: `~/honor-sleep-modules/lpass_build/`).
-   - Verifiziert in `/sys/kernel/debug/clk/clk_summary`: Alle 7 LPASS-Clocks (`LPASS_HW_DCODEC`, `LPASS_HW_MACRO`, `LPASS_CLK_ID_*_MCLK`, `fsgen`) sowie `lcx` und `lmx` gehen im Idle sauber auf `0` / `off-0`.
-2. **DWC3-QCOM Runtime/System-Suspend (`dwc3-qcom.ko`):**
-   - Gepatcht und installiert in `/lib/modules/7.2.11-300.fc45.aarch64/kernel/drivers/usb/dwc3/dwc3-qcom.ko` (Quellen: `~/dwc3_build/dwc3/`).
-3. **Fehlender Video-Clock-Controller (`videocc-sm8550.ko`):**
-   - Im Standard-Fedora-Kernel fehlte `CONFIG_SM_VIDEOCC_8550`, wodurch `aaf0000.clock-controller` (`qcom,x1e80100-videocc`) und `aa00000.video-codec` (`qcom_iris`) ungebunden blieben.
-   - Gebaut aus `~/msm_build/drivers/clk/qcom/videocc-sm8550.ko` und installiert in `/lib/modules/7.2.11-300.fc45.aarch64/kernel/drivers/clk/qcom/videocc-sm8550.ko`.
-   - **Effekt:** Sobald `videocc-sm8550.ko` geladen wird, springt `/sys/devices/platform/soc@0/17500000.rsc/17500000.rsc:power-controller/state_synced` (`rpmhpd`) sowie `1600000.interconnect`, `1780000.interconnect` und `26400000.interconnect` nativ auf **`1`**!
-4. **GPU GMU RPMh-Stop (`drm-msm-a6xx-fix-stale-rpmh-votes.patch`):**
-   - Bereits im Kernel `7.2.11` (`drivers/gpu/drm/msm/adreno/a6xx_gmu.c` Zeile 645 und 1468) enthalten und aktiv (`gpu_cx_gdsc`, `gpu_gx_gdsc`, `gfx` und `gmxc` sind `off-0`).
-5. **Hauptmodul `~/honor-sleep-modules/honor_deep_sleep_fix.ko` (installiert in `/lib/modules/7.2.11-300.fc45.aarch64/extra/honor_deep_sleep_fix.ko`):**
-   Vereint alle Kernel- und Plattform-Fixes für EL1 auf dem Honor MagicBook Art 14:
-   - **System-Sleep-Only Governor (`honor_sys_gov`) auf `power-domain-system` (`0x0200c354`, DRIPS):** Blockiert `0x0200c354` im Runtime-Idle (`power_down_ok = false`), erlaubt ihn aber in `s2idle` (`system_power_down_ok = orig`). Dadurch sind Standby und Resume zu **100 % stabil** (verifiziert über 10,5 Minuten Dauer-Standby + 1-Minuten-Test mit sofortigem Display-Resume).
-   - **EL1 Physical Timer Mirroring (`el1tmr_cpu_pm`):** Spiegelt bei `CPU_PM_ENTER` die aktive `cntv_cval_el0`-Deadline in `cntp_cval_el0` mit **`CTL_EN | CTL_MASK`** (WICHTIG: `CTL_MASK` muss zwingend gesetzt sein, sonst feuert IRQ 30 unquittiert und friert das SoC ein!).
-   - **USB-C / eDP PHY LDO Hold (`usbc-ldo-always-on`):** Hält `vreg_l2j_1p2` (`vdda12` auf `fd9000.phy`) und `vreg_l3j_0p8` (`vdd` auf `fd9000.phy`) aktiv, damit das SoC bei `rpmhpd` Power-Off nicht abstürzt.
-   - **Bluetooth-UART Force-Suspend (`serial-qcom-geni-force-suspend-resume.patch`):** Hängt sich in die PM-Ops von `a98000.serial` (`qcom_geni_serial`) ein und ruft `pm_runtime_force_suspend(dev)` / `pm_runtime_force_resume(dev)` auf. Verifiziert in `dmesg`: `[ 1274.358777] honor_deep_sleep_fix: a98000.serial pm_runtime_force_suspend ret=0`.
-   - **AOSS QMP `sleep_mode: cxsd`:** Sendet `{class: aoss, res: sleep_mode, val: cxsd}` an `17500000.rsc` (verhindert den bekannten X1E AOSD-XO-Shutdown-Reset).
-   - **Syscon `bi_tcxo` Unprepare:** Gibt die Boot-Clocks auf `1fc0000.syscon`, `1fd3000.syscon` und `b22000.syscon` frei.
-   - **USB Wakeup Disable:** Deaktiviert Wakeup auf `a200000.usb`, `a400000.usb`, `a600000.usb`, `a800000.usb`.
-   - **NEU (in der aktuell kompilierten Version in `~/honor-sleep-modules/honor_deep_sleep_fix.c` hinzugefügt):**
-     1. Setzt `rp->bridge_d3 = 1` auf dem PCIe Root Port `0004:00:00.0` (`1c08000.pcie`, entspricht `pcie_port_pm=force`).
-     2. Ruft `sync_state` auf `1700000.interconnect` und `interconnect-1` (blockiert durch das geblacklistete `1dfa000.crypto`) auf.
-     3. Ruft `of_genpd_sync_state(dev->of_node)` auf `100000.clock-controller` (`gcc-x1e80100`) und `3d90000.clock-controller` (`gpucc-x1e80100`) auf (deren Consumer `3d6a000.gmu` nie an einen eigenen `platform_driver` bindet).
+### B. Running in EL2 via `slbounce` (`tcblaunch.exe` Secure Launch)
+Using `systemd-boot` with [`TravMurav/slbounce`](https://github.com/TravMurav/slbounce) (`slbounceaa64.efi` in `/EFI/systemd/drivers/` and `tcblaunch.exe` from the Windows 11 26100.1 RTM recovery image in `/boot/efi/tcblaunch.exe`) successfully boots the Honor MagicBook Art 14 into native **EL2** (`CPU: All CPU(s) started at EL2`, `kvm [1]: VHE mode initialized successfully`) without a USB stick or manual UEFI Shell commands.
+
+However, attempting deep `s2idle` (`cxsd` / `ddr` collapse) under EL2 on the Honor MagicBook Art 14 hits **two fatal hardware/firmware roadblocks**:
+
+1. **`dpm_suspend_noirq` Bus Hard-Lock When `cx` Collapses (`sync_all_suppliers = 1`):**
+   - To allow `cx` (`cx.lvl`, `0x30000`) to drop to `0` during `s2idle`, an earlier version of `honor_deep_sleep_fix.ko` called `of_genpd_sync_state()` on `100000.clock-controller` (`gcc-x1e80100`) and `3d90000.clock-controller` (`gpucc-x1e80100`).
+   - Note that in the Linux kernel (`kernel/power/suspend.c`), `pm_test=platform` stops **before** `dpm_suspend_noirq()` in `s2idle_loop()`.
+   - When a full `s2idle` cycle runs (`pm_test=none`), `dpm_suspend_noirq()` powers off all `gcc_*_gdsc` domains and drops `cx.lvl` to `0`.
+   - In `honor_el2.dtb`, `iommu@15000000` (`arm,smmu-v3`) must be enabled (`status = "okay"`) with `iommu-map` on the PCIe controllers (whereas under EL1 it is `status = "reserved"` and managed by Gunyah). When `cx` collapses in `dpm_suspend_noirq()` under EL2 without Gunyah saving/restoring SMMU and RSC context, the SoC immediately **hard-locks on the bus** before even reaching `s2idle_enter()`.
+2. **PSCI `0x0200c354` (DRIPS) & `qcom_adsp_pwr_lmts` Firmware Freeze:**
+   - Even when isolating PSCI system power-down (`0x0200c354`) or sending the 24-byte `MODERN_STANDBY_STATE = 1` GLINK notification via `qcom_adsp_pwr_lmts.ko` (as used in `justririll/x1e-sleep` on Lenovo/ASUS models), the Honor MagicBook Art 14 firmware hangs inside TrustZone/AOP/ADSP.
+   - Once locked, **no wakeup source can recover the SoC**—neither the EL2/EL02 architectural hardware timers (`CNTHP_CVAL_EL2` / `SYS_CNTP_CVAL_EL02`), nor PDC-routed GPIO interrupts (Lid switch GPIO 92 / Keyboard `1-003a` GPIO 67), nor the PMIC power button. Only a 10-second forced power-off recovers the machine.
 
 ---
 
-## 3. Aktueller Stand der Ftrace-Analyse (Warum `cxsd` / `ddr` im letzten Lauf vor den 2 neuen Zeilen noch `0` waren)
+## 2. Critical Traps & False Fixes Uncovered During Debugging
 
-Im letzten Standby-Lauf (`18:01:17` – `18:02:17`) zeigte `/sys/kernel/debug/tracing/trace` bereits einen riesigen Fortschritt:
-- `power-domain-system` (`0x0200c354`, DRIPS) wurde sauber betreten (`psci_domain_idle_enter: cpu_id=11 state=0x200c354 is_s2idle=yes`, `S2idle: 0 -> 1`).
-- `mmcx.lvl` (`0x30080`) und `mx.lvl` (`0x30010`) gingen in `dpm_suspend_noirq` auf **`data: 0x0`** (`1274.478728: addr: 0x30080 data: 0x0`).
-- In `tcs(m): 3 [sleep]` gingen `SN0` (`0x50010`), `CN0` (`0x5002c`), `QUP1` (`0x50040`), `QUP0` (`0x50038`), `ACV` (`0x5003c`) auf **`0`**.
+### Trap 1: Setting `spm_lvl = 3` on Micron UFS 4.0 (`1d84000.ufshc`) Breaks Resume
+- **The False Fix:** An earlier handoff claimed that setting `/sys/devices/platform/soc@0/1d84000.ufshc/spm_lvl` to `3` (`UIC_LINK_HIBERN8_STATE`) via `/etc/udev/rules.d/99-ufs-pm.rules` prevented UFS crashes.
+- **What Actually Happened (Proven via `pm_test=platform`):**
+  When `gcc_ufs_phy_gdsc` powers down during suspend while `spm_lvl = 3`, `ufshcd` assumes the link stayed in Hibern8 with power maintained and skips full HBA re-initialization. Upon resume, `ufshcd_uic_hibern8_exit` fails:
+  ```text
+  ufshcd-qcom 1d84000.ufshc: pwr ctrl cmd 0x18 with (MIBattribute 0x0, mode 0x0) failed, host upmcrs:0x5
+  ufshcd-qcom 1d84000.ufshc: ufshcd_uic_hibern8_exit: hibern8 exit failed. ret = 5
+  ufshcd-qcom 1d84000.ufshc: __ufshcd_wl_resume: hibern8 exit failed 5
+  ```
+  This leaves the root UFS drive dead (`Device power mode=2, UIC link state=2`). Worse, because `systemd-sleep` freezes `user.slice` (`gnome-shell`) before suspend and runs `/usr/lib/systemd/system-sleep/` hooks (which call `sync`) *before* thawing `user.slice`, `systemd-sleep` hangs forever in D-state waiting on dead UFS I/O—leaving the OLED screen permanently black or the GNOME lockscreen completely unresponsive!
+- **Correct Setting:** **Never set `spm_lvl = 3` when UFS GDSCs power down.** Keep the kernel default `spm_lvl = 5` (`UIC_LINK_OFF_STATE`), which cleanly shuts down the link before suspend and performs a full `ufshcd_hba_enable` + `ufshcd_link_startup` on resume, and set `sync_all_suppliers = 0` in `honor_deep_sleep_fix`.
 
-Es blieben im Trace **exakt zwei Dinge** übrig, die den CX/DDR-Collapse im Lauf um `18:01:17` noch verhindert haben (beide sind im neu kompilierten `honor_deep_sleep_fix.ko` bereits adressiert):
+### Trap 2: Removing `wakeup-source;` from `switch-lid` and Disabling `1-003a` Keyboard Wakeup
+- **The False Fix:** Earlier commits stripped `wakeup-source;` from `switch-lid` (GPIO 92, IRQ 129) in `honor_native_edp_fix.dts` / `honor_el2.dts` and disabled wakeup on `1-003a` (I2C keyboard, GPIO 67, IRQ 127) in `92-snapdragon-wakeup.rules`.
+- **What Actually Happened:**
+  - Removing `wakeup-source;` from `switch-lid` caused `gpio-keys` to never register `/sys/devices/platform/gpio-keys/power/wakeup` at all (`button[0].wakeup = 0`), so `enable_irq_wake(129)` was never called on suspend.
+  - Because `pmic_pwrkey` (IRQ 202) is routed through `pmic_arb` (GICv3 SPI) rather than the Qualcomm PDC (`pdc@b220000`), disabling both `switch-lid` (PDC GPIO 92) and `1-003a` (PDC GPIO 67) left **zero PDC wakeup sources armed** during deep sleep!
+- **Correct Setting:** Keep `wakeup-source;` and `debounce-interval = <0x14>;` (without `wakeup-event-action = <0x02>;`) inside `switch-lid` in the DTB, and keep `/sys/bus/i2c/devices/1-003a/power/wakeup` set to `enabled` (only disable `2-005d` touchpad wakeup).
 
-1. **`MC0` (`0x50000`), `SH0` (`0x50004`) und `SH1` (`0x50008`) hatten in `tcs(m): 3 [sleep]` noch `data: 0x60000001` (`1 kB/s` Peak-Vote):**
-   - **Ursache:** Auf `1c08000.pcie` meldet der Root Port `0004:00:00.0` Hotplug (`pciehp`), wodurch ohne `pcie_port_pm=force` (bzw. `rp->bridge_d3 = 1`) `0004:00:00.0` in `PCI_D0` bleibt. Dadurch gibt `pci_host_common_d3cold_possible()` in `dw_pcie_suspend_noirq()` `false` zurück, `pcie->pci->suspended` bleibt `false`, und `qcom_pcie_suspend_noirq()` (`drivers/pci/controller/dwc/pcie-qcom.c` Zeile 2225) setzt `icc_set_bw(pcie->icc_mem, 0, kBps_to_icc(1))` (`data: 0x60000001`) statt `icc_disable(pcie->icc_mem)`!
-   - Genau dieser Fall ist in `vivobook-s15.nix` dokumentiert:
-     `# The root ports claim hot-plug (pciehp binds), which keeps them in D0 in s2idle: the link then stays up and pcie-qcom keeps the DDR vote. "pcie_port_pm=force"`
-   - **Lösung:** Ist in `honor_deep_sleep_fix.c` (`honor_enable_pcie_bridge_d3()`) eingebaut.
-
-2. **`cx.lvl` (`0x30000`) wurde in `dpm_suspend_noirq` noch nicht auf `0` geschaltet (`cx` blieb `on` mit `performance = 256`):**
-   - **Ursache A:** `100000.clock-controller` (`gcc-x1e80100`) hatte `state_synced = 0` (weil `3d6a000.gmu` als Consumer auf `available` steht). Dadurch hatten alle 27 `gcc_*_gdsc` Sub-Domains von `cx` noch `genpd->stay_on = true` (insbesondere `gcc_usb30_tert_gdsc`, das 0 Devices hat und deshalb in `dpm_suspend_noirq` nie abgeschaltet wird, solange `stay_on == true` ist).
-     **Lösung:** `of_genpd_sync_state(dev->of_node)` auf `100000.clock-controller` und `3d90000.clock-controller` ist jetzt in `honor_deep_sleep_fix.c` (`honor_sync_remaining_suppliers()`) eingebaut.
-   - **Ursache B:** Die drei USB-Controller `a400000.usb`, `a600000.usb`, `a800000.usb` (`dwc3-qcom`) behalten ihren Performance-Vote (`256`) auf `gcc_usb30_{mp,prim,sec}_gdsc` -> `cx`, wenn sie beim Eintritt in `s2idle` nicht runtime-suspended sind oder wenn `dwc3_qcom_pm_suspend` nicht `genpd_drop_performance_state` auslöst (da `dwc3_qcom_pm_suspend` kein `pm_runtime_force_suspend` nutzt, sondern nur `dwc3_qcom_suspend`). Wenn die `gcc_usb30_*_gdsc` Domains in `dpm_suspend_noirq` dank `of_genpd_sync_state` (`stay_on = false`) komplett abschalten (`genpd_sync_power_off`), prüfen, ob `cx` damit automatisch auf `0` fällt. Falls `link->performance_state` (`256`) von abgeschalteten Sub-Domains in `_genpd_reeval_performance_state(cx)` trotzdem mitgezählt wird (siehe Kommentar in `drivers/pmdomain/core.c` Zeile 381: *"Note that we also take vote from powered-off sub-domains into account"*!), muss in `PM_SUSPEND_PREPARE` (oder in `dwc3_qcom_pm_suspend`) `dev_pm_genpd_set_performance_state(dev, 0)` bzw. `dev_pm_opp_set_rate(dev, 0)` für `a400000.usb`, `a600000.usb`, `a800000.usb` und `1d84000.ufshc` aufgerufen werden!
-
----
-
-## 4. Vollzug & Messergebnisse (Stand 3. November)
-
-Alle Schritte aus Abschnitt 3 wurden live ausgeführt und verifiziert:
-
-1. **Live-Aktivierung & Verifikation der Fixes:**
-   - PCIe Root Port `0004:00:00.0`: `bridge_d3 = 0` gesetzt (verhindert DWC L2 Timeout). Im Sleep-TCS (`tcs(m): 3`) fielen alle Interconnect-Votes (`MC0`, `SH0`, `SH1`, `SN0`, `CN0`, `QUP0`, `QUP1`, `ACV`, `PCIE_ANOC`) auf **exakt 0** (`0x40000000`).
-   - `of_genpd_sync_state` auf `100000.clock-controller` (`gcc-x1e80100`): `gcc_usb30_tert_gdsc` und `gcc_usb20_prim_gdsc` fielen sofort auf `off-0`.
-   - In `dpm_suspend_noirq` gingen alle Spannungsdomänen auf 0:
-     - `cx.lvl` (`0x30000`): **`0`**
-     - `mx.lvl` (`0x30010`): **`0`**
-     - `mmcx.lvl` (`0x30080`): **`0`**
-   - `power-domain-system` (`0x0200c354`, DRIPS) wurde sauber betreten (`is_s2idle=yes`).
-
-2. **Dauerhafte Persistierung im System:**
-   - `/etc/modules-load.d/x1e-sleep.conf`: Lädt `aoss_cxsd_only`, `qcom_adsp_pwr_lmts` und `honor_deep_sleep_fix` automatisch bei jedem Systemstart.
-   - `/etc/udev/rules.d/92-snapdragon-wakeup.rules`: Deaktiviert den FPC-Fingerprint-Reader (`10a5:9924`), der zuvor minütlich USB-Resets und Wakeups triggerte.
-   - `/etc/systemd/system-sleep/snapdragon-power-saver.sh`: Fährt Wi-Fi (`ath12k`) vor dem Standby sauber herunter und stellt nach dem Aufwachen die Verbindung automatisch wieder her.
+### Trap 3: Why Hibernation Failed Previously and Overheated in a Backpack
+- **What Went Wrong in Earlier Scripts:**
+  1. `setup_suspend_hibernate.sh` ran `dracut -f`, which rebuilt `/boot/initramfs-7.2.11-300.fc45.aarch64.img` on `/dev/sda8` (`/boot`), **not** `/boot/efi/initrd_native.img` on `/dev/sda2` (`/boot/efi`), which is the actual initramfs loaded by GRUB!
+  2. Because `/boot/efi/initrd_native.img` lacked the `resume` dracut module (`systemd-hibernate-resume`), `/sys/power/resume` remained `0:0` at runtime even though `resume=UUID=...` was on the kernel command line.
+  3. On Fedora 45, `/dev/zram0` has swap priority `100`, while `/swap/swapfile` has priority `10`. When `/sys/power/resume` is `0:0`, the kernel's `swsusp_swap_check()` inspects the highest-priority swap device (`zram0`), rejects it (`-ENODEV`), and aborts hibernation.
+  4. When hibernation (or `suspend-then-hibernate` after 15 minutes) aborted—or when `spm_lvl = 3` crashed the UFS drive during the `dpm_freeze` snapshot phase—`systemd` simply aborted the sleep operation and **left the laptop running wide awake inside a closed backpack**!
 
 ---
 
-## 5. Durchbruch am 4. November: Behebung der Spurious Wakeups & Kprobe-Befunde
+## 3. Safe Production Configuration (`0.00 W` Hibernate + Backpack Failsafe)
 
-### A. Das Problem der 943-µs- und 200-ms-Abbrüche
-In Kernel-Trace-Analysen (Kprobes auf `s2idle_enter`, `s2idle_wake` und `pm_system_wakeup`) wurde aufgedeckt, warum frühere Standby-Versuche beim Zuklappen des Deckels nach weniger als einer Millisekunde abbrachen:
-1. **Lid-Switch-Glitch (GPIO 92):** Im Device Tree war für `switch-lid` (`gpio-keys`) `wakeup-event-action = <0x02>;` (`EV_ACT_DEASSERTED`) gesetzt. Beim Zuklappen des Deckels zog der Hall-Sensor die Leitung auf LOW. Der Treiber schaltete daraufhin die Polarität im Qualcomm TLMM auf `IRQ_TYPE_EDGE_RISING`, was im TLMM-Multiplexer einen Hardware-Glitch erzeugte und sofort das Bit in `INTR_STATUS` setzte. Folge: Sofortiger Suspend-Abbruch nach **943 µs**.
-2. **Timer-Mirroring-Missverständnis (`el1tmr`):** Der aus `justririll/x1e-sleep` stammende `el1tmr`-Ansatz ist ausschließlich für Systeme auf **EL2 (VHE)** gedacht. Da unser Kernel nativ auf **EL1** unter Gunyah läuft, führte das manuelle Beschreiben von `cntp_cval_el0` im CPU-PM-Notifier zu Timer-Desynchronisationen.
+Until Qualcomm and Honor upstream EL2-safe SMMU/RSC/ADSP suspend support for the `MRO-XXX` firmware, the only safe configuration that guarantees **0.00 W** drain and zero backpack overheating is:
 
-### B. Die Lösung
-1. **Device Tree (`display/honor_native_edp_fix.dts` & `.dtb`):**
-   - Entfernen von `wakeup-event-action = <0x02>;` aus `switch-lid`.
-   - Ergänzen von `debounce-interval = <0x14>;` (20 ms Hardware-Entprellung).
-   - Der Pin bleibt stabil auf `EDGE_BOTH`, sodass beim Schließen des Deckels keine Polaritätsumschaltung und kein TLMM-Glitch mehr stattfindet.
-2. **Kernelmodul (`honor_deep_sleep_fix.c`):**
-   - Vollständige Entfernung aller EL2-Timer-Hacks (`el1tmr_cpu_pm`, `init_cntp`, `clear_cntp`). Linux verwaltet die ARM64-Arch-Timer auf EL1 wieder nativ.
-   - Verlässlicher Aufruf von `honor_init_pcie_icc()` in `PM_SUSPEND_PREPARE`, um PCIe-Interconnect-Sleep-Votes auf 0 zu senken.
-   - Beibehaltung von `rp->bridge_d3 = 0` (Schutz vor DWC L2 Timeout).
-3. **Verifikation im Live-Test (4. November, 08:52 Uhr):**
-   - Deckel zugeklappt: Der Laptop blieb **13,45 Sekunden ununterbrochen im Deep Sleep** (`Timekeeping suspended for 13.447 seconds`).
-   - Deckel aufgeklappt: Das Gerät wachte sofort und ausschließlich durch das physische Öffnen des Deckels auf (`PM: Triggering wakeup from IRQ 128`, `Lid opened. Operation 'suspend' finished`).
-   - Keine Abstürze, sofortige Reinitialisierung des OLED-Panels.
-
-### C. Architektur-Realität: Warum `cxsd` und `ddr` unter Gunyah (EL1) auf 0 bleiben
-Wie unabhängige Forschungen des *Samsung Galaxy Book4 Edge* (`n1c0la84/book4-edge-linux`) und des *ASUS Vivobook S15* (`justririll/x1e-sleep`) belegen, fängt der Qualcomm Gunyah Hypervisor auf EL1 den PSCI-Call `0x0200C354` ab und aggregiert die Sleep-Zustände der VM-Gruppen (`hyp/vm/psci_osi/src/psci_osi.c`).
-Solange Linux unter Gunyah (EL1) gebootet wird, verbleibt der aggregierte physische Zustand bei 0; `cxsd` und `ddr` können erst dann auf Hardware-Ebene kollabieren (> 97 % Residency), wenn der Bootloader auf **EL2 via `slbounce`** umgestellt wird.
+1. **Ensure `/boot/efi/initrd_native.img` includes the `resume` dracut module** (`systemd-hibernate-resume`) and pass `resume=/dev/sda9 resume_offset=<offset>` on the kernel command line.
+2. **Explicitly program `/sys/power/resume` at boot** via `/etc/tmpfiles.d/hibernate-resume.conf`:
+   ```text
+   w /sys/power/resume - - - - 8:9
+   w /sys/power/resume_offset - - - - 1655338
+   ```
+3. **Force `HibernateMode=shutdown`** in `/etc/systemd/sleep.conf.d/hibernate.conf` so the mainboard physically powers off after writing the image (`0.00 W`).
+4. **Configure `FailureAction=poweroff` on `systemd-hibernate.service` and `systemd-suspend.service`:**
+   ```ini
+   # /etc/systemd/system/systemd-hibernate.service.d/override.conf
+   [Unit]
+   FailureAction=poweroff
+   ```
+   If hibernation or suspend ever fails for any reason while the lid is closed, `systemd` immediately executes a clean `poweroff` instead of leaving the machine running in a bag.
+5. **Disable `sync_all_suppliers` and `0x0200c354` in `honor_deep_sleep_fix.ko`:**
+   Pass `options honor_deep_sleep_fix sync_all_suppliers=0 hold_usbc_ldos=1` and increment `power-domain-system`'s `sd_count` so neither `cx` nor `0x0200c354` can hard-lock the bus.

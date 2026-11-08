@@ -30,7 +30,7 @@
 #include <asm/arch_timer.h>
 #include <asm/sysreg.h>
 
-static int sync_all_suppliers = 1;
+static int sync_all_suppliers = 0;
 module_param(sync_all_suppliers, int, 0644);
 
 static bool in_s2idle;
@@ -248,11 +248,7 @@ static struct dev_power_governor honor_sys_gov;
 
 static bool honor_never_power_down_ok(struct dev_pm_domain *pd)
 {
-	if (READ_ONCE(in_s2idle)) {
-		if (orig_sys_gov && orig_sys_gov->power_down_ok)
-			return orig_sys_gov->power_down_ok(pd);
-		return true;
-	}
+	/* Block 0x0200c354 (DRIPS) to prevent firmware hard-lock */
 	return false;
 }
 
@@ -270,6 +266,7 @@ static void honor_setup_system_sleep_only(void)
 			honor_sys_gov = *orig_sys_gov;
 			honor_sys_gov.power_down_ok = honor_never_power_down_ok;
 			gpd->gov = &honor_sys_gov;
+			atomic_inc(&gpd->sd_count);
 			pr_info("honor_deep_sleep_fix: installed system-sleep-only governor on %s\n",
 				gpd->name);
 		}
@@ -462,8 +459,10 @@ static void __exit honor_deep_sleep_exit(void)
 	unregister_pm_notifier(&honor_pm_nb);
 	honor_unhook_geni_serial();
 	honor_release_usbc_ldos();
-	if (sys_pd && orig_sys_gov)
+	if (sys_pd && orig_sys_gov) {
+		atomic_dec(&sys_pd->sd_count);
 		sys_pd->gov = orig_sys_gov;
+	}
 	pr_info("honor_deep_sleep_fix: unloaded\n");
 }
 

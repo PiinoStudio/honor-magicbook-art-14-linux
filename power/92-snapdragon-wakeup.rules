@@ -3,7 +3,9 @@ ACTION=="add|bind", SUBSYSTEM=="platform", KERNEL=="gpio-keys", ATTR{power/wakeu
 ACTION=="add|change", SUBSYSTEM=="power_supply", KERNEL=="qcom-battmgr-*|ucsi-source-psy-*", TEST=="power/wakeup", ATTR{power/wakeup}="disabled"
 ACTION=="add|bind", SUBSYSTEM=="mhi", KERNEL=="mhi0", TEST=="power/wakeup", ATTR{power/wakeup}="disabled"
 ACTION=="add|bind", SUBSYSTEM=="platform", KERNEL=="32300000.remoteproc", TEST=="power/wakeup", ATTR{power/wakeup}="disabled"
-ACTION=="add|bind", SUBSYSTEM=="i2c", KERNEL=="1-003a|2-005d", TEST=="power/wakeup", ATTR{power/wakeup}="disabled"
+# Disable touchpad (2-005d) wakeup, but keep keyboard (1-003a) wakeup enabled!
+ACTION=="add|bind", SUBSYSTEM=="i2c", KERNEL=="2-005d", TEST=="power/wakeup", ATTR{power/wakeup}="disabled"
+ACTION=="add|bind", SUBSYSTEM=="i2c", KERNEL=="1-003a", TEST=="power/wakeup", ATTR{power/wakeup}="enabled"
 
 # Enable runtime PM autosuspend for XHCI USB controllers
 ACTION=="add", SUBSYSTEM=="platform", KERNEL=="xhci-hcd.*.auto", ATTR{power/control}="auto"

@@ -1802,6 +1802,7 @@
 					pinctrl-0 = <0x9b>;
 					pinctrl-names = "default";
 					phandle = <0xe8>;
+					status = "disabled";
 				};
 
 				redriver@4f {
@@ -3569,7 +3570,7 @@
 			clocks = <0x22 0x09>;
 			clock-names = "ref";
 			resets = <0x3f 0x39>;
-			status = "okay";
+			status = "disabled";
 			vdd-supply = <0xa6>;
 			vdda12-supply = <0xa7>;
 			phys = <0xe8>;
@@ -3708,7 +3709,7 @@
 			snps,dis-u1-entry-quirk;
 			snps,dis-u2-entry-quirk;
 			dma-coherent;
-			status = "okay";
+			status = "disabled";
 			dr_mode = "host";
 
 			port {
@@ -9438,6 +9439,7 @@
 			gpios = <0x62 0x5c 0x01>;
 			linux,input-type = <0x05>;
 			linux,code = <0x00>;
+			wakeup-source;
 			debounce-interval = <0x14>;
 		};
 	};

@@ -62,20 +62,20 @@
 │   ├── build-install.sh
 │   └── apply-patch.sh
 ├── power/
-│   ├── honor_deep_sleep_fix/       # Kernel module for EL1 timer mirroring, genpd sync, bridge_d3, LDO hold
+│   ├── honor_deep_sleep_fix/       # Kernel module for safe runtime PM & sleep guards (sync_all_suppliers=0)
 │   │   ├── honor_deep_sleep_fix.c
 │   │   └── Makefile
-│   ├── setup_deep_sleep.sh         # One-click installer for 0.389W native deep sleep
-│   ├── 92-snapdragon-wakeup.rules  # Udev rules suppressing flapping USB devices & spurious wakes
+│   ├── setup_deep_sleep.sh         # Installer for honor_deep_sleep_fix.ko & udev wakeup rules
+│   ├── 92-snapdragon-wakeup.rules  # Udev rules suppressing flapping USB devices & touchpad wakes
 │   ├── honor-sleep.conf            # /etc/modules-load.d/ autoload configuration
 │   ├── snapdragon-power-saver.sh   # System-sleep hook for PCIe Wi-Fi safe suspend & runtime PM
-│   ├── setup_suspend_hibernate.sh  # (Optional) One-click installer for 0W deep hibernation
+│   ├── setup_suspend_hibernate.sh  # Recommended one-click installer for 0.00W disk hibernation + failsafe
 │   ├── 10-runtime-pm.rules         # Persistent udev runtime power management rules
-│   ├── hibernate.conf              # systemd-sleep policy (15min timeout to hibernate)
-│   ├── lid.conf                    # systemd-logind policy (suspend-then-hibernate)
+│   ├── hibernate.conf              # systemd-sleep policy (HibernateMode=shutdown)
+│   ├── lid.conf                    # systemd-logind policy (hibernate on lid close)
 │   └── setup_lid.sh                # Unmasks suspend targets and installs lid configuration
 ├── docs/
-│   └── DEEP_SLEEP_BREAKTHROUGH.md  # Detailed technical log, ftrace analysis, and power measurements
+│   └── DEEP_SLEEP_BREAKTHROUGH.md  # Technical Post-Mortem: Why s2idle (<0.5W) fails in EL1 & EL2, UFS/SMMU traps & Hibernate fixes
 ├── input/
 │   ├── 99-ignore-ghost-micmute.rules       # Udev rule to silence touchscreen mic-mute spam
 │   └── setup_input.sh                      # One-click installation for input fix
@@ -170,25 +170,31 @@ Or open **GNOME Settings → Users → Fingerprint Login** to add your prints.
 
 ---
 
-### 5. Configure Suspend, Lid Switch & Power Savers
+### 5. Configure Suspend, Lid Switch & 0.00W Disk Hibernation
 
-On Snapdragon X Elite laptops running under the factory Qualcomm Gunyah Hypervisor (EL1), regular Linux `s2idle` cannot collapse physical SoC power rails (`cxsd` and `ddr` stay at 0 due to Gunyah VM state aggregation). In pure `s2idle`, the laptop draws ~3 to 8W.
+> [!WARNING]
+> **Important Findings on `s2idle`, EL2 (`slbounce`), and Backpack Overheating (Read Before Configuring Sleep!):**
+> Earlier reports claiming `< 0.4W` pure `s2idle` on the Honor MagicBook Art 14 (`MRO-XXX`) were **not reproducible** under systematic hardware verification. Specifically:
+> 1. **Under EL1 (Qualcomm Gunyah Hypervisor):** Gunyah intercepts PSCI `0x0200c354` (`power-domain-system` / DRIPS) and prevents Linux from collapsing physical `VDD_CX` / `DDR` rails (`qcom_stats/{cxsd,ddr}` stay at `0`, drawing ~3–8W in `s2idle`).
+> 2. **Under EL2 (`slbounce` / `tcblaunch.exe`):** While the laptop boots cleanly into EL2 with KVM enabled, forcing `cx` collapse in `dpm_suspend_noirq()` (`of_genpd_sync_state` on `100000.clock-controller` with `sync_all_suppliers=1`) while `iommu@15000000` (`arm,smmu-v3`) is active immediately **hard-locks the SoC bus**. Furthermore, entering PSCI `0x0200c354` or loading `qcom_adsp_pwr_lmts` under EL2 hangs the Honor TrustZone/AOP/ADSP firmware so that neither hardware timers (`CNTHP`/`CNTP`) nor PDC GPIO wakeups (`switch-lid` GPIO 92, keyboard `1-003a` GPIO 67) can wake the laptop.
+> 3. **Do NOT set `spm_lvl = 3` on Micron UFS 4.0 (`1d84000.ufshc`):** Setting `spm_lvl = 3` causes `ufshcd_uic_hibern8_exit: hibern8 exit failed. ret = 5` on resume when UFS GDSCs power-cycle, killing the root filesystem and leaving the screen black. Keep the default `spm_lvl = 5` with `sync_all_suppliers = 0`.
+> 4. **Why previous Hibernate configs overheated in backpacks:** `dracut -f` only updates `/boot/initramfs-...`, not `/boot/efi/initrd_native.img`. Without `systemd-hibernate-resume` in `initrd_native.img` and `/etc/tmpfiles.d/hibernate-resume.conf` setting `/sys/power/resume` (`8:9`), `/sys/power/resume` stays `0:0`, the kernel picks `/dev/zram0` (priority 100 > swapfile priority 10), aborts hibernation, and leaves the laptop running inside a closed bag.
+>
+> Full technical details are documented in [docs/DEEP_SLEEP_BREAKTHROUGH.md](docs/DEEP_SLEEP_BREAKTHROUGH.md).
 
-Therefore, for real-world daily use, **Option A (`suspend-then-hibernate`) is the recommended configuration**: the laptop suspends instantly upon lid close, and transitions after a few minutes to disk hibernation, reducing battery drain to **0.00W**.
+For daily production use, **Option A (0.00W Disk Hibernation with `HibernateMode=shutdown` and `FailureAction=poweroff` failsafe) is strongly recommended**:
 
-#### Option A: 0.00W Deep Hibernation (`suspend-then-hibernate`, Recommended)
+#### Option A: 0.00W Disk Hibernation + Backpack Failsafe (Recommended)
 ```bash
 cd power
 chmod +x setup_suspend_hibernate.sh
 ./setup_suspend_hibernate.sh
 ```
 What this does:
-1. Configures a 34GB Btrfs swapfile on `/swap/swapfile` and calculates kernel resume parameters.
-2. Updates `dracut` initramfs with the `resume` module.
-3. Sets systemd policies:
-   - Immediate `s2idle` upon lid close.
-   - Automatic hibernation to disk after 15 minutes of sleep (**0.00W power draw**).
-   - Fast resume (~3 seconds) upon pressing the power button.
+1. Configures a 34GB Btrfs swapfile on `/swap/swapfile` and writes `MAJ:MIN` (`8:9`) and `resume_offset` to `/etc/tmpfiles.d/hibernate-resume.conf`.
+2. Rebuilds `dracut` initramfs with the `resume` module **and copies it to `/boot/efi/initrd_native.img`**.
+3. Configures `HibernateMode=shutdown` (physically powers off the mainboard after saving RAM to UFS -> **0.00W**).
+4. Installs `FailureAction=poweroff` on `systemd-hibernate.service` and `systemd-suspend.service` so the laptop immediately powers off if sleep ever fails with the lid closed.
 
 #### Option B: Standby Power-Saver Hooks & Lid Switch Only (`s2idle`)
 ```bash
@@ -197,25 +203,20 @@ chmod +x setup_lid.sh
 ./setup_lid.sh
 ```
 
-#### Option C: Native Power-Management Kernel Module (`honor_deep_sleep_fix.ko`)
+#### Option C: Runtime Power-Management Kernel Module (`honor_deep_sleep_fix.ko`)
 ```bash
 cd power
 chmod +x setup_deep_sleep.sh
 ./setup_deep_sleep.sh
 ```
 What this installs:
-1. Compiles and installs `honor_deep_sleep_fix.ko` with:
+1. Compiles and installs `honor_deep_sleep_fix.ko` (`sync_all_suppliers=0`, `hold_usbc_ldos=1`) with:
    - PCIe Root Port `0004:00:00.0` `bridge_d3 = 0` fix (preventing DWC L2 timeout aborts).
-   - Dynamic power domain sync for GCC and GPUCC clock controllers.
-   - System-sleep-only governor for `power-domain-system` (`0x0200c354`, DRIPS).
+   - Guards `power-domain-system` (`0x0200c354`, DRIPS) from triggering firmware hard-locks.
    - USB-C LDO hold for stability.
-2. Autoloading `/etc/modules-load.d/honor-sleep.conf` (ensures `videocc-sm8550` and `honor_deep_sleep_fix` load at boot).
-3. Udev rules (`92-snapdragon-wakeup.rules`) disabling spurious wakeups and silencing the flapping FPC fingerprint USB sensor.
-4. System-sleep power-saver hook (`snapdragon-power-saver.sh`) powering down Wi-Fi before sleep to prevent PCIe L2 timeouts and reconnecting automatically upon wake.
-1. Allocates an uncompressed, nocow 34GB swapfile on Btrfs (`/swap/swapfile`).
-2. Configures the kernel `resume` module in `dracut` and rebuilds the initramfs.
-3. Sets systemd to sleep instantly (`s2idle`) on lid close, and transition to **0.00W disk hibernation** after 15 minutes.
-4. Resumes within **~3 seconds** from the high-speed Micron UFS storage upon pressing the power button.
+2. Autoloading `/etc/modules-load.d/honor-sleep.conf` and safe module options in `/etc/modprobe.d/honor-sleep.conf`.
+3. Udev rules (`92-snapdragon-wakeup.rules`) disabling touchpad/USB spurious wakeups while keeping keyboard (`1-003a`) and lid (`gpio-keys`) wakeup enabled.
+4. System-sleep power-saver hook (`snapdragon-power-saver.sh`) powering down Wi-Fi before sleep and reconnecting automatically upon wake.
 
 ---
 

@@ -50,20 +50,20 @@
 │   ├── build-install.sh
 │   └── apply-patch.sh
 ├── power/
-│   ├── honor_deep_sleep_fix/       # Kernelmodul (EL1 Timer Mirroring, GenPD Sync, bridge_d3, LDO Hold)
+│   ├── honor_deep_sleep_fix/       # Kernelmodul für sichere Runtime-PM & Sleep-Guards (sync_all_suppliers=0)
 │   │   ├── honor_deep_sleep_fix.c
 │   │   └── Makefile
-│   ├── setup_deep_sleep.sh         # 1-Klick Setup für 0,389W echten Deep Sleep
+│   ├── setup_deep_sleep.sh         # Setup für honor_deep_sleep_fix.ko & Udev-Wakeup-Regeln
 │   ├── 92-snapdragon-wakeup.rules  # Udev-Regeln gegen Phantom-Wakeups & USB-Flapping
 │   ├── honor-sleep.conf            # /etc/modules-load.d/ Autoload-Konfiguration
 │   ├── snapdragon-power-saver.sh   # System-Sleep Hook für sicheren PCIe-Standby & Runtime-PM
-│   ├── setup_suspend_hibernate.sh  # (Optional) 1-Klick Setup für 0W Festplatten-Ruhezustand
+│   ├── setup_suspend_hibernate.sh  # Empfohlenes 1-Klick Setup für 0,00W Festplatten-Ruhezustand + Rucksack-Not-Aus
 │   ├── 10-runtime-pm.rules         # Udev-Regeln für automatisches Runtime-PM
-│   ├── hibernate.conf              # systemd-sleep Policy (15 Min Standby -> Hibernate)
-│   ├── lid.conf                    # systemd-logind Konfiguration für Deckelaktion
+│   ├── hibernate.conf              # systemd-sleep Policy (HibernateMode=shutdown)
+│   ├── lid.conf                    # systemd-logind Konfiguration für Deckelaktion (hibernate)
 │   └── setup_lid.sh                # Unmasked Suspend-Targets und richtet Basis-Standby ein
 ├── docs/
-│   └── DEEP_SLEEP_BREAKTHROUGH.md  # Vollständige Ftrace-Analyse, Register-Dumps & Leistungsmessungen
+│   └── DEEP_SLEEP_BREAKTHROUGH.md  # Technisches Post-Mortem: Warum s2idle (<0,5W) in EL1 & EL2 scheitert, UFS/SMMU-Fallen & Hibernate-Fixes
 ├── input/
 │   ├── 99-ignore-ghost-micmute.rules       # Udev-Regel zur Unterdrückung der Phantom-Mute-Events
 │   └── setup_input.sh                      # 1-Klick Setup für die Eingabegeräte-Korrektur
@@ -135,25 +135,31 @@ fprintd-enroll
 
 ---
 
-### 5. Standby, Deckelsensor & Stromsparer einrichten
+### 5. Standby, Deckelsensor & 0,00W-Hibernate einrichten
 
-Auf Snapdragon X Elite Laptops, die unter dem werksseitigen Qualcomm Gunyah Hypervisor (EL1) laufen, kann reguläres Linux-`s2idle` die physischen SoC-Stromschienen nicht abschalten (`cxsd` und `ddr` verbleiben bei 0 wegen Gunyahs VM-State-Aggregation). Im reinen `s2idle` zieht das System daher weiterhin ~3 bis 8 Watt.
+> [!WARNING]
+> **Wichtige Negativ-Erkenntnisse zu `s2idle`, EL2 (`slbounce`) und Rucksack-Überhitzung (Vor dem Einrichten lesen!):**
+> Frühere Berichte über einen `< 0,4 W` `s2idle`-Standby auf dem Honor MagicBook Art 14 (`MRO-XXX`) hielten einer systematischen Hardware-Prüfung **nicht stand**. Um anderen Entwicklern tagelange Sackgassen zu ersparen, hier die verifizierten Fakten:
+> 1. **Unter EL1 (Qualcomm Gunyah Hypervisor):** Gunyah fängt PSCI `0x0200c354` (`power-domain-system` / DRIPS) ab und verhindert das Abschalten der physischen `VDD_CX`- und `DDR`-Stromschienen (`qcom_stats/{cxsd,ddr}` bleiben bei `0`, Verbrauch in `s2idle` ca. 3–8 W).
+> 2. **Unter EL2 (`slbounce` / `tcblaunch.exe`):** Der Boot in EL2 (inkl. KVM) funktioniert zwar vollautomatisch über `systemd-boot`, aber sobald `dpm_suspend_noirq()` die `cx`-Stromschiene abschaltet (`of_genpd_sync_state` auf `100000.clock-controller` bei `sync_all_suppliers=1`), während in `honor_el2.dtb` die `iommu@15000000` (`arm,smmu-v3`) aktiv ist, **friert der SoC-Bus sofort hart ein**. Ebenso führt der Aufruf von PSCI `0x0200c354` oder das Laden von `qcom_adsp_pwr_lmts` unter EL2 zu einem kompletten Freeze der Honor-TrustZone/AOP/ADSP-Firmware, aus dem weder Hardware-Timer (`CNTHP`/`CNTP`) noch PDC-GPIO-Interrupts (Deckel GPIO 92, Tastatur `1-003a` GPIO 67) das Gerät wieder aufwecken können.
+> 3. **NIEMALS `spm_lvl = 3` auf der Micron UFS 4.0 (`1d84000.ufshc`) setzen:** `spm_lvl = 3` führt beim Aufwachen nach einem GDSC-Power-Cycle zu `ufshcd_uic_hibern8_exit: hibern8 exit failed. ret = 5`, wodurch das Root-Dateisystem stirbt und der Bildschirm schwarz bleibt. Unbedingt auf dem Standardwert `spm_lvl = 5` (mit `sync_all_suppliers = 0`) belassen!
+> 4. **Warum frühere Hibernate-Skripte im Rucksack überhitzten:** `dracut -f` aktualisiert nur `/boot/initramfs-...`, aber **nicht** `/boot/efi/initrd_native.img`. Ohne `systemd-hibernate-resume` in `initrd_native.img` und ohne `/etc/tmpfiles.d/hibernate-resume.conf` (`8:9` in `/sys/power/resume`) bleibt `/sys/power/resume` auf `0:0`, der Kernel prüft `/dev/zram0` (Priorität 100 > Swapfile Priorität 10), bricht den Ruhezustand mit `-ENODEV` ab und lässt das Notebook bei geschlossenem Deckel im Rucksack wach weiterlaufen!
+>
+> Die vollständige technische Analyse ist in [docs/DEEP_SLEEP_BREAKTHROUGH.md](docs/DEEP_SLEEP_BREAKTHROUGH.md) dokumentiert.
 
-Für den produktiven Alltag ist daher **Option A (`suspend-then-hibernate`) die empfohlene Lösung**: Das Notebook geht beim Zuklappen sofort schlafen und wechselt nach wenigen Minuten automatisch auf die Festplatte, wodurch der Verbrauch auf echte **0,00 Watt** sinkt.
+Für den produktiven Alltag ist **Option A (0,00W-Hibernate mit `HibernateMode=shutdown` und `FailureAction=poweroff` Rucksack-Not-Aus)** die einzig sichere Lösung:
 
-#### Option A: 0,00W Tiefschlaf (`suspend-then-hibernate`, Empfohlen)
+#### Option A: 0,00W Festplatten-Ruhezustand + Rucksack-Not-Aus (Empfohlen)
 ```bash
 cd power
 chmod +x setup_suspend_hibernate.sh
 ./setup_suspend_hibernate.sh
 ```
 Was dieses Skript tut:
-1. Erstellt eine unkomprimierte 34 GB Swapdatei auf Btrfs (`/swap/swapfile`) und berechnet die Resume-Parameter für den Kernel.
-2. Aktualisiert das `dracut`-Initramfs mit dem `resume`-Modul.
-3. Konfiguriert die systemd-Sleep-Policies:
-   - Sofortiger Standby (`s2idle`) beim Zuklappen des Deckels.
-   - Automatischer Wechsel in den Ruhezustand nach 15 Minuten (**0,00 W Leistungsaufnahme**).
-   - Schnelles Aufwachen (~3 Sekunden) beim Drücken der Powertaste.
+1. Erstellt eine unkomprimierte 34 GB Swapdatei auf Btrfs (`/swap/swapfile`) und schreibt `MAJ:MIN` (`8:9`) sowie `resume_offset` nach `/etc/tmpfiles.d/hibernate-resume.conf`.
+2. Baut das `dracut`-Initramfs mit dem `resume`-Modul neu **und kopiert es nach `/boot/efi/initrd_native.img`**.
+3. Setzt `HibernateMode=shutdown` (Mainboard schaltet nach dem Speichern des RAM-Abbilds physisch komplett ab → **0,00 W**).
+4. Richtet `FailureAction=poweroff` für `systemd-hibernate.service` und `systemd-suspend.service` ein: Sollte der Ruhezustand bei geschlossenem Deckel jemals fehlschlagen, schaltet sich das Gerät sofort komplett aus, statt im Rucksack heißzulaufen.
 
 #### Option B: Basis-Standby & Deckelschalter (`s2idle`)
 ```bash
@@ -162,24 +168,20 @@ chmod +x setup_lid.sh
 ./setup_lid.sh
 ```
 
-#### Option C: Natives Power-Management Kernelmodul (`honor_deep_sleep_fix.ko`)
+#### Option C: Runtime-Power-Management Kernelmodul (`honor_deep_sleep_fix.ko`)
 ```bash
 cd power
 chmod +x setup_deep_sleep.sh
 ./setup_deep_sleep.sh
 ```
 Was dieses Modul tut:
-1. Baut und installiert `honor_deep_sleep_fix.ko` mit:
+1. Baut und installiert `honor_deep_sleep_fix.ko` (`sync_all_suppliers=0`, `hold_usbc_ldos=1`) mit:
    - PCIe Root Port `0004:00:00.0` `bridge_d3 = 0` Fix (verhindert DWC L2 Timeout Abbrüche).
-   - Dynamic Power-Domain Synchronisation für GCC und GPUCC Clock-Controller.
-   - System-Sleep-Only Governor für `power-domain-system` (`0x0200c354`, DRIPS).
-   - USB-C LDO Hold für felsenfeste Stabilität.
-2. Richtet `/etc/modules-load.d/honor-sleep.conf` ein (lädt `videocc-sm8550` und `honor_deep_sleep_fix` automatisch beim Booten).
-3. Installiert Udev-Regeln (`92-snapdragon-wakeup.rules`), die Phantom-Wakeups verhindern und den flatternden USB-Fingerprint-Reader stilllegen.
+   - Sperre für `power-domain-system` (`0x0200c354`, DRIPS), um Firmware-Freezes zu verhindern.
+   - USB-C LDO Hold für Stabilität.
+2. Richtet `/etc/modules-load.d/honor-sleep.conf` und `/etc/modprobe.d/honor-sleep.conf` ein.
+3. Installiert Udev-Regeln (`92-snapdragon-wakeup.rules`), die Touchpad/USB-Phantom-Wakeups unterdrücken, aber Tastatur (`1-003a`) und Deckel (`gpio-keys`) als Wakeup-Quelle aktiv lassen.
 4. Installiert den Sleep-Hook (`snapdragon-power-saver.sh`), der das WLAN vor dem Suspend schont und nach dem Aufwachen automatisch reaktiviert.
-2. Bindet das `resume`-Modul in Dracut ein und baut das Initramfs neu.
-3. Richtet systemd so ein, dass beim Zuklappen sofort `s2idle` aktiv wird, und nach 15 Minuten Inaktivität automatisch in den **vollständig stromlosen Ruhezustand (0,00W)** gewechselt wird.
-4. Beim Aufklappen/Starten ist das System in **ca. 3 Sekunden** von der UFS-SSD wieder voll da.
 
 ---
 
