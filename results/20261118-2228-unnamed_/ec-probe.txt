@@ -1,0 +1,7 @@
+EC bus (i2c@b94000): 3
+bound clients on this bus:
+/sys/bus/i2c/devices/3-004f
+FW version read (cmd 0x0e, 4 bytes, I2C block read):
+0x00 0x00 0x00 0x00
+Thermal capability read (cmd 0x42, 3 bytes):
+Error: Read failed
