@@ -80,7 +80,19 @@ Working branch: `claude/peaceful-meitner-0wq9vl`.
 - New lead: **no cpufreq policies exist** (scmi-cpufreq does not register; SCMI logs
   `Failed to add opps_by_lvl ... for NCC - ret:-16`). Also `qcom-iris` says `video hw is power on`
   before its init fails. Details in the run's `notes.md`.
-- Not yet reviewed by Antigravity. Open: s2idle with ICC synced; why cpufreq is missing.
+- Not yet reviewed by Antigravity. Open: s2idle with ICC synced.
+
+## cpufreq (`results/20261118-2330-cpufreq-probe/`, read-only)
+
+- `scmi-cpufreq` is built as a module but has no modalias, so it is never loaded. DT and SCMI
+  perf domains are fine; `NCC_0..2` sit at perf state 0.
+- Measured: cluster 0 fixed at 3.42 GHz, clusters 1/2 fixed at 4.0 GHz (`power/diag/cpufreq_probe.py`).
+- Loaded it (owner approved), `results/20261118-2326-cpufreq-before` vs. `...2329-cpufreq-scmi`,
+  brightness 2/255: **9.63 W -> 6.41 W awake idle (-3.2 W)**, schedutil keeps all clusters at the
+  lowest OPP ~97 % of the time, nothing broke. Not yet reviewed by Antigravity.
+- From now on the owner measures at brightness 2/255 to keep the display share small.
+- **Next action:** make it persistent via `/etc/modules-load.d/scmi-cpufreq.conf` (owner approval),
+  reboot, check suspend/resume + hibernate; then repeat ICC sync at 2/255.
 
 ## Open questions sent to Antigravity
 

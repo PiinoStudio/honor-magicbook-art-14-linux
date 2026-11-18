@@ -1,0 +1,8 @@
+[  617.419029] CF_MODPROBE_MARKER
+[  617.425279] cpu cpu0: EM: OPP:806400 is inefficient
+[  617.425286] cpu cpu0: EM: OPP:710400 is inefficient
+[  617.425401] cpu cpu0: EM: created perf domain
+[  617.428465] cpu cpu4: EM: OPP:806400 is inefficient
+[  617.428591] cpu cpu4: EM: created perf domain
+[  617.431611] cpu cpu8: EM: OPP:806400 is inefficient
+[  617.431745] cpu cpu8: EM: created perf domain
