@@ -91,8 +91,13 @@ Working branch: `claude/peaceful-meitner-0wq9vl`.
   brightness 2/255: **9.63 W -> 6.41 W awake idle (-3.2 W)**, schedutil keeps all clusters at the
   lowest OPP ~97 % of the time, nothing broke. Not yet reviewed by Antigravity.
 - From now on the owner measures at brightness 2/255 to keep the display share small.
-- **Next action:** make it persistent via `/etc/modules-load.d/scmi-cpufreq.conf` (owner approval),
-  reboot, check suspend/resume + hibernate; then repeat ICC sync at 2/255.
+- Made persistent: `/etc/modules-load.d/scmi-cpufreq.conf` on the Honor (owner approved). Loads at
+  boot. Short s2idle check passed (`results/20261118-2340-cpufreq-s2idle-short`, 2 clean resumes).
+- **Hibernate fallback is NOT working** (pre-existing, also in boot -4): logind says "Requested
+  hibernate operation is not supported, using regular suspend instead", so `HandleLidSwitch=hibernate`
+  silently suspends. Root cause open (see the run's `notes.md`).
+- **Next actions:** fix hibernate availability; repeat ICC sync at 2/255; let the lid inhibitor in
+  `sleep_diag.sh run` cover the whole run.
 
 ## Open questions sent to Antigravity
 

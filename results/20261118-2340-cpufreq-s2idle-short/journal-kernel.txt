@@ -1,0 +1,120 @@
+Nov 18 23:41:09 <host> kernel: PM: suspend entry (s2idle)
+Nov 18 23:41:09 <host> kernel: Filesystems sync: 0.087 seconds
+Nov 18 23:41:10 <host> kernel: honor_deep_sleep_fix: disabled bridge_d3 on PCIe RP 0004:00:00.0 (prevent L2 timeout)
+Nov 18 23:41:10 <host> kernel: honor_deep_sleep_fix: configured pcie-mem icc tag=3, bw=250000
+Nov 18 23:41:10 <host> kernel: honor_deep_sleep_fix: enabled button[0].wakeup on gpio-keys
+Nov 18 23:41:10 <host> kernel: honor_deep_sleep_fix: enabled wakeup on gpio-keys
+Nov 18 23:41:10 <host> kernel: honor_deep_sleep_fix: enabled wakeup on keyboard 1-003a
+Nov 18 23:41:26 <host> kernel: Freezing user space processes
+Nov 18 23:41:26 <host> kernel: Freezing user space processes completed (elapsed 0.002 seconds)
+Nov 18 23:41:26 <host> kernel: OOM killer disabled.
+Nov 18 23:41:26 <host> kernel: Freezing remaining freezable tasks
+Nov 18 23:41:26 <host> kernel: Freezing remaining freezable tasks completed (elapsed 0.000 seconds)
+Nov 18 23:41:26 <host> kernel: printk: Suspending console(s) (use no_console_suspend to debug)
+Nov 18 23:41:26 <host> kernel: GFP mask restricted
+Nov 18 23:41:26 <host> kernel: wlP4p1s0: deauthenticating from 62:b5:8d:06:0f:40 by local choice (Reason: 3=DEAUTH_LEAVING)
+Nov 18 23:41:26 <host> kernel: dwc3-qcom a800000.usb: port-1 HS-PHY not in L2
+Nov 18 23:41:26 <host> kernel: dwc3-qcom a600000.usb: port-1 HS-PHY not in L2
+Nov 18 23:41:26 <host> kernel: dwc3-qcom a400000.usb: port-1 HS-PHY not in L2
+Nov 18 23:41:26 <host> kernel: dwc3-qcom a400000.usb: port-2 HS-PHY not in L2
+Nov 18 23:41:26 <host> kernel: i2c_hid_of 2-005d: device returned incorrect report (255 vs 3 expected)
+Nov 18 23:41:26 <host> kernel: honor_deep_sleep_fix: a98000.serial pm_runtime_force_suspend ret=0, pstate=0
+Nov 18 23:41:26 <host> kernel: PM: suspend of devices complete after 554.370 msecs
+Nov 18 23:41:26 <host> kernel: PM: start suspend of devices complete after 569.890 msecs
+Nov 18 23:41:26 <host> kernel: PM: suspend devices took 0.569 seconds
+Nov 18 23:41:26 <host> kernel: PM: late suspend of devices complete after 93.643 msecs
+Nov 18 23:41:26 <host> kernel: PM: noirq suspend of devices complete after 17.716 msecs
+Nov 18 23:41:26 <host> kernel: PM: suspend-to-idle
+Nov 18 23:41:26 <host> kernel: Timekeeping suspended for 13.964 seconds
+Nov 18 23:41:26 <host> kernel: PM: Triggering wakeup from IRQ 127
+Nov 18 23:41:26 <host> kernel: PM: resume from suspend-to-idle
+Nov 18 23:41:26 <host> kernel: PM: noirq resume of devices complete after 15.181 msecs
+Nov 18 23:41:26 <host> kernel: mhi mhi0: Requested to power ON
+Nov 18 23:41:26 <host> kernel: mhi mhi0: Power on setup success
+Nov 18 23:41:26 <host> kernel: mhi mhi0: Wait for device to enter SBL or Mission mode
+Nov 18 23:41:26 <host> kernel: PM: early resume of devices complete after 517.898 msecs
+Nov 18 23:41:26 <host> kernel: honor_deep_sleep_fix: a98000.serial pm_runtime_force_resume ret=0, pstate=128
+Nov 18 23:41:26 <host> kernel: ath12k_wifi7_pci 0004:01:00.0: qmi dma allocation failed (7274496 B type 1), will try later with small size
+Nov 18 23:41:26 <host> kernel: ath12k_wifi7_pci 0004:01:00.0: chip_id 0x2 chip_family 0x4 board_id 0xff soc_id 0x40170200
+Nov 18 23:41:26 <host> kernel: ath12k_wifi7_pci 0004:01:00.0: fw_version 0x1103006c fw_build_timestamp 2026-03-06 09:10 fw_build_id QC_IMAGE_VERSION_STRING=WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Nov 18 23:41:26 <host> kernel: hwmon hwmon68: PM: parent phy0 should not be sleeping
+Nov 18 23:41:26 <host> kernel: i2c_hid_of 2-005d: device returned incorrect report (255 vs 3 expected)
+Nov 18 23:41:26 <host> kernel: PM: resume of devices complete after 604.641 msecs
+Nov 18 23:41:26 <host> kernel: GFP mask restored
+Nov 18 23:41:26 <host> kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+Nov 18 23:41:26 <host> kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+Nov 18 23:41:26 <host> kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+Nov 18 23:41:26 <host> kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+Nov 18 23:41:26 <host> kernel: PM: resume devices took 1.704 seconds
+Nov 18 23:41:26 <host> kernel: OOM killer enabled.
+Nov 18 23:41:26 <host> kernel: Restarting tasks: Starting
+Nov 18 23:41:26 <host> kernel: Restarting tasks: Done
+Nov 18 23:41:26 <host> kernel: random: crng reseeded on system resumption
+Nov 18 23:41:26 <host> kernel: PM: suspend exit
+Nov 18 23:41:28 fedora kernel: NOTICE: Automounting of tracing to debugfs is deprecated and will be removed in 2030
+Nov 18 23:41:28 fedora kernel: PM: suspend entry (s2idle)
+Nov 18 23:41:28 fedora kernel: Filesystems sync: 0.097 seconds
+Nov 18 23:41:28 fedora kernel: honor_deep_sleep_fix: disabled bridge_d3 on PCIe RP 0004:00:00.0 (prevent L2 timeout)
+Nov 18 23:41:28 fedora kernel: honor_deep_sleep_fix: configured pcie-mem icc tag=3, bw=250000
+Nov 18 23:41:28 fedora kernel: honor_deep_sleep_fix: enabled button[0].wakeup on gpio-keys
+Nov 18 23:41:28 fedora kernel: honor_deep_sleep_fix: enabled wakeup on gpio-keys
+Nov 18 23:44:23 fedora kernel: honor_deep_sleep_fix: enabled wakeup on keyboard 1-003a
+Nov 18 23:44:23 fedora kernel: Freezing user space processes
+Nov 18 23:44:23 fedora kernel: Freezing user space processes completed (elapsed 0.002 seconds)
+Nov 18 23:44:23 fedora kernel: OOM killer disabled.
+Nov 18 23:44:23 fedora kernel: Freezing remaining freezable tasks
+Nov 18 23:44:23 fedora kernel: Freezing remaining freezable tasks completed (elapsed 0.000 seconds)
+Nov 18 23:44:23 fedora kernel: printk: Suspending console(s) (use no_console_suspend to debug)
+Nov 18 23:44:23 fedora kernel: GFP mask restricted
+Nov 18 23:44:23 fedora kernel: dwc3-qcom a800000.usb: port-1 HS-PHY not in L2
+Nov 18 23:44:23 fedora kernel: dwc3-qcom a600000.usb: port-1 HS-PHY not in L2
+Nov 18 23:44:23 fedora kernel: dwc3-qcom a400000.usb: port-1 HS-PHY not in L2
+Nov 18 23:44:23 fedora kernel: dwc3-qcom a400000.usb: port-2 HS-PHY not in L2
+Nov 18 23:44:23 fedora kernel: i2c_hid_of 2-005d: device returned incorrect report (255 vs 3 expected)
+Nov 18 23:44:23 fedora kernel: honor_deep_sleep_fix: a98000.serial pm_runtime_force_suspend ret=0, pstate=0
+Nov 18 23:44:23 fedora kernel: PM: suspend of devices complete after 530.899 msecs
+Nov 18 23:44:23 fedora kernel: PM: start suspend of devices complete after 533.581 msecs
+Nov 18 23:44:23 fedora kernel: PM: suspend devices took 0.533 seconds
+Nov 18 23:44:23 fedora kernel: PM: late suspend of devices complete after 88.158 msecs
+Nov 18 23:44:23 fedora kernel: PM: noirq suspend of devices complete after 20.489 msecs
+Nov 18 23:44:23 fedora kernel: PM: suspend-to-idle
+Nov 18 23:44:23 fedora kernel: Timekeeping suspended for 172.745 seconds
+Nov 18 23:44:23 fedora kernel: PM: Triggering wakeup from IRQ 127
+Nov 18 23:44:23 fedora kernel: PM: resume from suspend-to-idle
+Nov 18 23:44:23 fedora kernel: PM: noirq resume of devices complete after 17.151 msecs
+Nov 18 23:44:23 fedora kernel: mhi mhi0: Requested to power ON
+Nov 18 23:44:23 fedora kernel: mhi mhi0: Power on setup success
+Nov 18 23:44:23 fedora kernel: mhi mhi0: Wait for device to enter SBL or Mission mode
+Nov 18 23:44:23 fedora kernel: PM: early resume of devices complete after 527.969 msecs
+Nov 18 23:44:23 fedora kernel: honor_deep_sleep_fix: a98000.serial pm_runtime_force_resume ret=0, pstate=128
+Nov 18 23:44:23 fedora kernel: ath12k_wifi7_pci 0004:01:00.0: qmi dma allocation failed (7274496 B type 1), will try later with small size
+Nov 18 23:44:23 fedora kernel: ath12k_wifi7_pci 0004:01:00.0: chip_id 0x2 chip_family 0x4 board_id 0xff soc_id 0x40170200
+Nov 18 23:44:23 fedora kernel: ath12k_wifi7_pci 0004:01:00.0: fw_version 0x1103006c fw_build_timestamp 2026-03-06 09:10 fw_build_id QC_IMAGE_VERSION_STRING=WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Nov 18 23:44:23 fedora kernel: hwmon hwmon68: PM: parent phy0 should not be sleeping
+Nov 18 23:44:23 fedora kernel: i2c_hid_of 2-005d: device returned incorrect report (255 vs 3 expected)
+Nov 18 23:44:23 fedora kernel: PM: resume of devices complete after 602.977 msecs
+Nov 18 23:44:23 fedora kernel: GFP mask restored
+Nov 18 23:44:23 fedora kernel: PM: resume devices took 0.605 seconds
+Nov 18 23:44:23 fedora kernel: OOM killer enabled.
+Nov 18 23:44:23 fedora kernel: Restarting tasks: Starting
+Nov 18 23:44:23 fedora kernel: Restarting tasks: Done
+Nov 18 23:44:23 fedora kernel: random: crng reseeded on system resumption
+Nov 18 23:44:23 fedora kernel: PM: suspend exit
+Nov 18 23:44:23 fedora kernel: Bluetooth: hci0: setting up wcn7850
+Nov 18 23:44:23 fedora kernel: Bluetooth: hci0: QCA Product ID   :0x00000019
+Nov 18 23:44:23 fedora kernel: Bluetooth: hci0: QCA SOC Version  :0x40170200
+Nov 18 23:44:23 fedora kernel: Bluetooth: hci0: QCA ROM Version  :0x00000200
+Nov 18 23:44:23 fedora kernel: Bluetooth: hci0: QCA Patch Version:0x000043fb
+Nov 18 23:44:23 fedora kernel: Bluetooth: hci0: QCA controller version 0x02000200
+Nov 18 23:44:23 fedora kernel: Bluetooth: hci0: QCA Downloading qca/hmtbtfw20.tlv
+Nov 18 23:44:23 fedora kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+Nov 18 23:44:23 fedora kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+Nov 18 23:44:23 fedora kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+Nov 18 23:44:23 fedora kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+Nov 18 23:44:24 fedora kernel: Bluetooth: hci0: QCA Downloading qca/hmtnv20.b112
+Nov 18 23:44:24 fedora kernel: Bluetooth: hci0: QCA FW build version: BTFW.HAMILTON.2.0.1-00349-WOS_PATCHZ-2
+Nov 18 23:44:24 fedora kernel: Bluetooth: hci0: QCA setup on UART is completed
+Nov 18 23:44:24 fedora kernel: Bluetooth: hci0: HFP non-HCI data transport is supported
+Nov 18 23:44:24 fedora kernel: Bluetooth: hci0: AOSP extensions version v0.98
+Nov 18 23:44:24 fedora kernel: Bluetooth: hci0: AOSP quality report is supported
+Nov 18 23:44:24 fedora kernel: Bluetooth: MGMT ver 1.23
