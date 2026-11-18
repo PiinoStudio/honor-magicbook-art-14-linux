@@ -1,0 +1,4 @@
+before: interconnect nodes at INT_MAX: 61
+FAILED: 1700000.interconnect (attribute not writable on this kernel?)
+FAILED: interconnect-1 (attribute not writable on this kernel?)
+after:  interconnect nodes at INT_MAX: 61

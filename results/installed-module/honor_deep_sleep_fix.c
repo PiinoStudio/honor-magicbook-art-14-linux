@@ -1,0 +1,556 @@
+// SPDX-License-Identifier: GPL-2.0
+#include <linux/clk.h>
+#include <linux/clk-provider.h>
+#include <linux/cpu_pm.h>
+#include <linux/cpumask.h>
+#include <linux/device.h>
+#include <linux/gpio/consumer.h>
+#include <linux/gpio_keys.h>
+#include <linux/i2c.h>
+#include <linux/hrtimer.h>
+#include <linux/init.h>
+#include <linux/interconnect.h>
+#include <linux/io.h>
+#include <linux/kernel.h>
+#include <linux/ktime.h>
+#include <linux/module.h>
+#include <linux/of.h>
+#include <linux/pci.h>
+#include <linux/phy/phy.h>
+#include <linux/platform_device.h>
+#include <linux/pm.h>
+#include <linux/pm_domain.h>
+#include <linux/pm_qos.h>
+#include <linux/pm_runtime.h>
+#include <linux/pm_wakeup.h>
+#include <linux/regulator/consumer.h>
+#include <linux/reset.h>
+#include <linux/smp.h>
+#include <linux/soc/qcom/qcom_aoss.h>
+#include <linux/suspend.h>
+#include <linux/tick.h>
+#include <asm/arch_timer.h>
+#include <asm/sysreg.h>
+
+static int sync_all_suppliers = 0;
+module_param(sync_all_suppliers, int, 0644);
+
+static int hold_usbc_ldos = 1;
+module_param(hold_usbc_ldos, int, 0644);
+
+static bool in_s2idle;
+static int s2idle_wake_sec = 0;
+module_param(s2idle_wake_sec, int, 0644);
+static u64 s2idle_wake_deadline;
+
+static int honor_cpu_pm_notify(struct notifier_block *nb, unsigned long action, void *v)
+{
+	u64 deadline = READ_ONCE(s2idle_wake_deadline);
+
+	if (!READ_ONCE(in_s2idle) || !deadline)
+		return NOTIFY_OK;
+
+	switch (action) {
+	case CPU_PM_ENTER:
+		write_sysreg(deadline, cntp_cval_el0);
+		write_sysreg(ARCH_TIMER_CTRL_ENABLE, cntp_ctl_el0);
+		if (is_kernel_in_hyp_mode()) {
+			write_sysreg_s(deadline, SYS_CNTP_CVAL_EL02);
+			write_sysreg_s(ARCH_TIMER_CTRL_ENABLE | ARCH_TIMER_CTRL_IT_MASK, SYS_CNTP_CTL_EL02);
+		}
+		isb();
+		break;
+	case CPU_PM_ENTER_FAILED:
+	case CPU_PM_EXIT:
+		if (__arch_counter_get_cntpct() >= deadline) {
+			write_sysreg(ARCH_TIMER_CTRL_IT_MASK, cntp_ctl_el0);
+			isb();
+			pm_system_wakeup();
+		}
+		break;
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block honor_cpu_pm_nb = {
+	.notifier_call = honor_cpu_pm_notify,
+	.priority = 10,
+};
+
+static void honor_enable_lid_and_kbd_wakeup(void)
+{
+	struct device *dev = bus_find_device_by_name(&platform_bus_type, NULL, "gpio-keys");
+	if (dev) {
+		void **drvdata = dev_get_drvdata(dev);
+		if (drvdata && *drvdata) {
+			struct gpio_keys_platform_data *pdata = (struct gpio_keys_platform_data *)(*drvdata);
+			if (pdata->buttons && pdata->nbuttons > 0) {
+				((struct gpio_keys_button *)pdata->buttons)[0].wakeup = 1;
+				pr_info("honor_deep_sleep_fix: enabled button[0].wakeup on gpio-keys\n");
+			}
+		}
+		device_init_wakeup(dev, true);
+		pr_info("honor_deep_sleep_fix: enabled wakeup on gpio-keys\n");
+		put_device(dev);
+	}
+	dev = bus_find_device_by_name(&i2c_bus_type, NULL, "1-003a");
+	if (dev) {
+		device_set_wakeup_enable(dev, true);
+		pr_info("honor_deep_sleep_fix: enabled wakeup on keyboard 1-003a\n");
+		put_device(dev);
+	}
+}
+
+/* 1. Regulators vreg_l2j_1p2 and vreg_l3j_0p8 kept on (usbc-ldo-always-on) */
+static struct regulator *reg_l2j;
+static struct regulator *reg_l3j;
+
+
+static void honor_hold_usbc_ldos(void)
+{
+	struct device *dev;
+
+	if (!hold_usbc_ldos) {
+		pr_info("honor_deep_sleep_fix: hold_usbc_ldos=0 (EL2 native mode), skipping LDO hold\n");
+		return;
+	}
+	dev = bus_find_device_by_name(&platform_bus_type, NULL, "fd9000.phy");
+
+	if (!dev)
+		return;
+
+	reg_l2j = regulator_get(dev, "vdda12");
+	if (!IS_ERR(reg_l2j)) {
+		if (regulator_enable(reg_l2j) == 0)
+			pr_info("honor_deep_sleep_fix: enabled vreg_l2j_1p2 (vdda12) always-on hold\n");
+	} else {
+		reg_l2j = NULL;
+	}
+
+	reg_l3j = regulator_get(dev, "vdd");
+	if (!IS_ERR(reg_l3j)) {
+		if (regulator_enable(reg_l3j) == 0)
+			pr_info("honor_deep_sleep_fix: enabled vreg_l3j_0p8 (vdd) always-on hold\n");
+	} else {
+		reg_l3j = NULL;
+	}
+
+	put_device(dev);
+}
+
+static void honor_release_usbc_ldos(void)
+{
+	if (reg_l3j) {
+		regulator_disable(reg_l3j);
+		regulator_put(reg_l3j);
+		reg_l3j = NULL;
+	}
+	if (reg_l2j) {
+		regulator_disable(reg_l2j);
+		regulator_put(reg_l2j);
+		reg_l2j = NULL;
+	}
+}
+
+/* 2. Wrap qcom_geni_serial PM ops for a98000.serial (BT UART) force_suspend/resume */
+static struct device_driver *geni_drv;
+static const struct dev_pm_ops *orig_geni_pm;
+static struct dev_pm_ops honor_geni_pm;
+
+static int honor_geni_suspend(struct device *dev)
+{
+	int ret = 0;
+
+	if (orig_geni_pm && orig_geni_pm->suspend) {
+		ret = orig_geni_pm->suspend(dev);
+		if (ret)
+			return ret;
+	}
+	ret = pm_runtime_force_suspend(dev);
+	dev_pm_genpd_set_performance_state(dev, 0);
+	pr_info("honor_deep_sleep_fix: %s pm_runtime_force_suspend ret=%d, pstate=0\n",
+		dev_name(dev), ret);
+	return ret;
+}
+
+static int honor_geni_resume(struct device *dev)
+{
+	int ret = 0;
+
+	dev_pm_genpd_set_performance_state(dev, 128);
+	ret = pm_runtime_force_resume(dev);
+	if (ret)
+		return ret;
+
+	if (orig_geni_pm && orig_geni_pm->resume)
+		ret = orig_geni_pm->resume(dev);
+
+	pr_info("honor_deep_sleep_fix: %s pm_runtime_force_resume ret=%d, pstate=128\n",
+		dev_name(dev), ret);
+	return ret;
+}
+
+static void honor_hook_geni_serial(void)
+{
+	struct device *dev = bus_find_device_by_name(&platform_bus_type, NULL, "a98000.serial");
+
+	if (!dev)
+		return;
+
+	if (dev->driver && dev->driver->pm && dev->driver->pm != &honor_geni_pm) {
+		geni_drv = dev->driver;
+		orig_geni_pm = geni_drv->pm;
+		honor_geni_pm = *orig_geni_pm;
+		honor_geni_pm.suspend = honor_geni_suspend;
+		honor_geni_pm.resume = honor_geni_resume;
+		geni_drv->pm = &honor_geni_pm;
+		pr_info("honor_deep_sleep_fix: hooked qcom_geni_serial PM ops for force_suspend/resume\n");
+	}
+	put_device(dev);
+}
+
+static void honor_unhook_geni_serial(void)
+{
+	if (geni_drv && orig_geni_pm) {
+		geni_drv->pm = orig_geni_pm;
+		geni_drv = NULL;
+		orig_geni_pm = NULL;
+	}
+}
+
+static void honor_enable_pcie_bridge_d3(void);
+static void honor_init_pcie_icc(void);
+static void honor_sync_remaining_suppliers(void);
+
+static int honor_pm_notify(struct notifier_block *nb, unsigned long mode, void *unused)
+{
+	switch (mode) {
+	case PM_SUSPEND_PREPARE:
+		honor_enable_pcie_bridge_d3();
+		honor_init_pcie_icc();
+		honor_sync_remaining_suppliers();
+		honor_enable_lid_and_kbd_wakeup();
+		if (s2idle_wake_sec > 0)
+			WRITE_ONCE(s2idle_wake_deadline, __arch_counter_get_cntpct() + (u64)s2idle_wake_sec * 19200000ULL);
+		else
+			WRITE_ONCE(s2idle_wake_deadline, 0);
+		WRITE_ONCE(in_s2idle, true);
+		break;
+	case PM_POST_SUSPEND:
+		WRITE_ONCE(in_s2idle, false);
+		WRITE_ONCE(s2idle_wake_deadline, 0);
+		break;
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block honor_pm_nb = {
+	.notifier_call = honor_pm_notify,
+};
+
+/* 4. Unprepare unused syscon bi_tcxo clocks */
+static const char * const syscon_devs[] = {
+	"1fc0000.syscon",
+	"1fd3000.syscon",
+	"b22000.syscon",
+};
+
+static void honor_fix_syscon_clks(void)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(syscon_devs); i++) {
+		struct device *dev = bus_find_device_by_name(&platform_bus_type, NULL, syscon_devs[i]);
+		struct clk *clk;
+
+		if (!dev)
+			continue;
+
+		clk = of_clk_get(dev->of_node, 0);
+		if (!IS_ERR(clk)) {
+			if (__clk_is_enabled(clk))
+				clk_disable(clk);
+			clk_unprepare(clk);
+			pr_info("honor_deep_sleep_fix: unprepared bi_tcxo on %s\n", syscon_devs[i]);
+			clk_put(clk);
+		}
+		put_device(dev);
+	}
+}
+
+/* 5. AOSS QMP sleep_mode: cxsd */
+static void honor_set_aoss_cxsd(void)
+{
+	struct device *rsc_dev = bus_find_device_by_name(&platform_bus_type, NULL, "17500000.rsc");
+	struct qmp *qmp;
+
+	if (!rsc_dev)
+		return;
+
+	qmp = qmp_get(rsc_dev);
+	if (!IS_ERR(qmp)) {
+		int ret = qmp_send(qmp, "{class: aoss, res: sleep_mode, val: cxsd}");
+		pr_info("honor_deep_sleep_fix: sent AOSS sleep_mode: cxsd (ret=%d)\n", ret);
+		qmp_put(qmp);
+	}
+	put_device(rsc_dev);
+}
+
+/* 6. Disable wakeup on USB controllers */
+static const char * const usb_wake_devs[] = {
+	"a200000.usb",
+	"a400000.usb",
+	"a600000.usb",
+	"a800000.usb",
+};
+
+static void honor_disable_usb_wakeup(void)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(usb_wake_devs); i++) {
+		struct device *dev = bus_find_device_by_name(&platform_bus_type, NULL, usb_wake_devs[i]);
+		if (!dev)
+			continue;
+		if (device_may_wakeup(dev)) {
+			device_set_wakeup_enable(dev, false);
+			pr_info("honor_deep_sleep_fix: disabled wakeup on %s\n", usb_wake_devs[i]);
+		}
+		put_device(dev);
+	}
+}
+
+/* 7. System-sleep-only governor on power-domain-system */
+static struct generic_pm_domain *sys_pd;
+static struct dev_power_governor *orig_sys_gov;
+static struct dev_power_governor honor_sys_gov;
+
+static bool honor_never_power_down_ok(struct dev_pm_domain *pd)
+{
+	/* Never allow runtime genpd governor to enter DRIPS (0x0200c354);
+	 * s2idle uses genpd_sync_power_off() which bypasses power_down_ok().
+	 */
+	return false;
+}
+
+static void honor_setup_system_sleep_only(void)
+{
+	struct device *dev = bus_find_device_by_name(&platform_bus_type, NULL, "17500000.rsc");
+	if (!dev)
+		return;
+
+	if (dev->pm_domain) {
+		struct generic_pm_domain *gpd = pd_to_genpd(dev->pm_domain);
+		if (gpd && gpd->gov && gpd->gov != &honor_sys_gov) {
+			sys_pd = gpd;
+			orig_sys_gov = gpd->gov;
+			honor_sys_gov = *orig_sys_gov;
+			honor_sys_gov.power_down_ok = honor_never_power_down_ok;
+			gpd->gov = &honor_sys_gov;
+			atomic_inc(&gpd->sd_count);
+			pr_info("honor_deep_sleep_fix: installed system-sleep-only governor on %s\n",
+				gpd->name);
+		}
+	}
+	put_device(dev);
+}
+
+/* 8. Keep bridge_d3 = 0 on PCIe root port 0004:00:00.0 (prevents DWC L2 timeout abort) */
+static void honor_enable_pcie_bridge_d3(void)
+{
+	struct pci_dev *rp = pci_get_domain_bus_and_slot(4, 0, 0);
+
+	if (rp) {
+		rp->bridge_d3 = 0;
+		pr_info("honor_deep_sleep_fix: disabled bridge_d3 on PCIe RP 0004:00:00.0 (prevent L2 timeout)\n");
+		pci_dev_put(rp);
+	}
+}
+
+/* 9. Sync remaining interconnect & clock-controller genpd providers */
+static const char * const icc_sync_devs[] = {
+	"1700000.interconnect",
+	"interconnect-1",
+};
+
+static const char * const genpd_sync_devs[] = {
+	"100000.clock-controller",
+	"3d90000.clock-controller",
+};
+
+static void honor_sync_remaining_suppliers(void)
+{
+	int i;
+
+	if (!sync_all_suppliers)
+		return;
+
+	for (i = 0; i < ARRAY_SIZE(icc_sync_devs); i++) {
+		struct device *dev = bus_find_device_by_name(&platform_bus_type, NULL, icc_sync_devs[i]);
+		if (dev) {
+			if (dev->driver && dev->driver->sync_state) {
+				pr_info("honor_deep_sleep_fix: calling sync_state on %s\n", icc_sync_devs[i]);
+				dev->driver->sync_state(dev);
+			}
+			put_device(dev);
+		}
+	}
+
+	for (i = 0; i < ARRAY_SIZE(genpd_sync_devs); i++) {
+		struct device *dev = bus_find_device_by_name(&platform_bus_type, NULL, genpd_sync_devs[i]);
+		if (dev) {
+			if (dev->of_node) {
+				pr_info("honor_deep_sleep_fix: calling of_genpd_sync_state on %s\n", genpd_sync_devs[i]);
+				of_genpd_sync_state(dev->of_node);
+			}
+			put_device(dev);
+		}
+	}
+}
+
+/* 10. Control pcie-mem interconnect bandwidth (drop to 0 on suspend, Gen 1 on runtime) */
+struct qcom_pcie_resources_1_0_0 {
+	struct clk_bulk_data *clks;
+	int num_clks;
+	struct reset_control *core;
+	struct regulator *vdda;
+};
+
+#define QCOM_PCIE_2_1_0_MAX_RESETS		6
+#define QCOM_PCIE_2_1_0_MAX_SUPPLY		3
+struct qcom_pcie_resources_2_1_0 {
+	struct clk_bulk_data *clks;
+	int num_clks;
+	struct reset_control_bulk_data resets[QCOM_PCIE_2_1_0_MAX_RESETS];
+	int num_resets;
+	struct regulator_bulk_data supplies[QCOM_PCIE_2_1_0_MAX_SUPPLY];
+};
+
+#define QCOM_PCIE_2_3_2_MAX_SUPPLY		2
+struct qcom_pcie_resources_2_3_2 {
+	struct clk_bulk_data *clks;
+	int num_clks;
+	struct regulator_bulk_data supplies[QCOM_PCIE_2_3_2_MAX_SUPPLY];
+};
+
+#define QCOM_PCIE_2_3_3_MAX_RESETS		7
+struct qcom_pcie_resources_2_3_3 {
+	struct clk_bulk_data *clks;
+	int num_clks;
+	struct reset_control_bulk_data rst[QCOM_PCIE_2_3_3_MAX_RESETS];
+};
+
+#define QCOM_PCIE_2_4_0_MAX_RESETS		12
+struct qcom_pcie_resources_2_4_0 {
+	struct clk_bulk_data *clks;
+	int num_clks;
+	struct reset_control_bulk_data resets[QCOM_PCIE_2_4_0_MAX_RESETS];
+	int num_resets;
+};
+
+#define QCOM_PCIE_2_7_0_MAX_SUPPLIES		2
+struct qcom_pcie_resources_2_7_0 {
+	struct clk_bulk_data *clks;
+	int num_clks;
+	struct regulator_bulk_data supplies[QCOM_PCIE_2_7_0_MAX_SUPPLIES];
+	struct reset_control *rst;
+};
+
+struct qcom_pcie_resources_2_9_0 {
+	struct clk_bulk_data *clks;
+	int num_clks;
+	struct reset_control *rst;
+};
+
+union qcom_pcie_resources {
+	struct qcom_pcie_resources_1_0_0 v1_0_0;
+	struct qcom_pcie_resources_2_1_0 v2_1_0;
+	struct qcom_pcie_resources_2_3_2 v2_3_2;
+	struct qcom_pcie_resources_2_3_3 v2_3_3;
+	struct qcom_pcie_resources_2_4_0 v2_4_0;
+	struct qcom_pcie_resources_2_7_0 v2_7_0;
+	struct qcom_pcie_resources_2_9_0 v2_9_0;
+};
+
+struct qcom_pcie {
+	void *pci;
+	void __iomem *parf;
+	void __iomem *mhi;
+	union qcom_pcie_resources res;
+	struct icc_path *icc_mem;
+	struct icc_path *icc_cpu;
+};
+
+static struct icc_path *honor_pcie_icc_mem;
+
+static void honor_init_pcie_icc(void)
+{
+	struct device *dev = bus_find_device_by_name(&platform_bus_type, NULL, "1c08000.pcie");
+	struct qcom_pcie *pcie;
+
+	if (!dev)
+		return;
+
+	pcie = dev_get_drvdata(dev);
+	if (pcie && pcie->icc_mem) {
+		honor_pcie_icc_mem = pcie->icc_mem;
+		icc_set_tag(honor_pcie_icc_mem, 3); /* ACTIVE | WAKE only (no SLEEP vote) */
+		icc_set_bw(honor_pcie_icc_mem, 0, 250000); /* Gen 1 BW (250 MB/s) */
+		pr_info("honor_deep_sleep_fix: configured pcie-mem icc tag=3, bw=250000\n");
+	}
+	put_device(dev);
+}
+
+static void honor_exit_pcie_icc(void)
+{
+	if (honor_pcie_icc_mem) {
+		icc_set_tag(honor_pcie_icc_mem, 7);
+		icc_set_bw(honor_pcie_icc_mem, 0, 1969000);
+		honor_pcie_icc_mem = NULL;
+	}
+}
+
+static int __init honor_deep_sleep_init(void)
+{
+	int ret;
+
+	pr_info("honor_deep_sleep_fix: initializing X1E80100 deep sleep fixes\n");
+
+	honor_setup_system_sleep_only();
+	honor_hold_usbc_ldos();
+	honor_hook_geni_serial();
+	honor_enable_pcie_bridge_d3();
+	honor_init_pcie_icc();
+
+	ret = register_pm_notifier(&honor_pm_nb);
+	if (ret)
+		return ret;
+
+	honor_fix_syscon_clks();
+	honor_set_aoss_cxsd();
+	honor_disable_usb_wakeup();
+	honor_enable_lid_and_kbd_wakeup();
+	cpu_pm_register_notifier(&honor_cpu_pm_nb);
+	honor_sync_remaining_suppliers();
+
+	return 0;
+}
+
+static void __exit honor_deep_sleep_exit(void)
+{
+	honor_exit_pcie_icc();
+	cpu_pm_unregister_notifier(&honor_cpu_pm_nb);
+	unregister_pm_notifier(&honor_pm_nb);
+	honor_unhook_geni_serial();
+	honor_release_usbc_ldos();
+	if (sys_pd && orig_sys_gov) {
+		atomic_dec(&sys_pd->sd_count);
+		sys_pd->gov = orig_sys_gov;
+	}
+	pr_info("honor_deep_sleep_fix: unloaded\n");
+}
+
+module_init(honor_deep_sleep_init);
+module_exit(honor_deep_sleep_exit);
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("Honor MagicBook Art 14 X1E80100 Deep Sleep Fixes");
