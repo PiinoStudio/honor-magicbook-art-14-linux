@@ -96,8 +96,13 @@ Working branch: `claude/peaceful-meitner-0wq9vl`.
 - **Hibernate fallback is NOT working** (pre-existing, also in boot -4): logind says "Requested
   hibernate operation is not supported, using regular suspend instead", so `HandleLidSwitch=hibernate`
   silently suspends. Root cause open (see the run's `notes.md`).
-- **Next actions:** fix hibernate availability; repeat ICC sync at 2/255; let the lid inhibitor in
-  `sleep_diag.sh run` cover the whole run.
+- Hibernate root cause: SELinux denies `systemd-logind` search on the unlabeled `/swap` subvolume
+  (`results/20261118-2355-hibernate-diag/`). Labeling it `swapfile_t` enabled hibernate, but the
+  **resume hung** (dark blue screen, no network; forced power-off). Label reverted, so lid close
+  suspends again. **Do not re-enable hibernate until resume is debugged.** The "working fallback"
+  above is not true for the current install.
+- **Next actions:** debug hibernate resume (pm_test levels, test without scmi-cpufreq); repeat ICC
+  sync at 2/255; let the lid inhibitor in `sleep_diag.sh run` cover the whole run.
 
 ## Open questions sent to Antigravity
 
