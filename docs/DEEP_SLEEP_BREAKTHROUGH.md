@@ -1,5 +1,12 @@
 # Technical Post-Mortem: Power Management, `s2idle` & EL2 (`slbounce`) Findings on the Honor MagicBook Art 14 (X1E80100)
 
+> [!CAUTION]
+> **Under review (November 2026):** the EL1 conclusion below was measured with `honor_deep_sleep_fix.ko`
+> loaded, which pins `power-domain-system` on and keeps the Wi-Fi root port in D0. Both alone prevent
+> CXSD/DDR collapse, so the "Gunyah blocks it" result is confounded. Several EL2 failures also match
+> pitfalls other X1E projects have since solved. See [STANDBY_ANALYSIS_2026-11.md](STANDBY_ANALYSIS_2026-11.md)
+> and [STANDBY_TEST_PLAN.md](STANDBY_TEST_PLAN.md).
+
 > [!WARNING]
 > **Correction of Earlier Claims:**
 > Earlier revisions of this document claimed a `0.389 W` `s2idle` breakthrough and a working `suspend-then-hibernate` script. Subsequent systematic kernel testing (`pm_test=devices`, `pm_test=platform`, and live EL1/EL2 hardware traces) proved those claims false and uncovered critical pitfalls that caused the laptop either to hard-lock in sleep or to abort hibernation and overheat inside a closed backpack.

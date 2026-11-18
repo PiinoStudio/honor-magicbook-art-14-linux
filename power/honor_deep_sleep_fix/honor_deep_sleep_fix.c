@@ -33,6 +33,30 @@
 static int sync_all_suppliers = 0;
 module_param(sync_all_suppliers, int, 0644);
 
+/*
+ * Test switches (see docs/STANDBY_TEST_PLAN.md). Defaults keep the
+ * previous behaviour so existing installs are unchanged.
+ *
+ * block_drips=1: never let power-domain-system power off. This also means
+ *   rpmh-rsc never flushes its sleep/wake votes on system_pd power-off, so
+ *   CXSD/DDR collapse is impossible by construction while this is set.
+ * pcie_bridge_d3: value written to bridge_d3 of the Wi-Fi root port
+ *   0004:00:00.0. 0 keeps the port in D0 (pcie-qcom then keeps a DDR vote
+ *   through suspend); 1 allows D3 like mainline d4c79b63d82d.
+ * pcie_icc_tweak=1: retag/re-vote the 1c08000.pcie pcie-mem path.
+ */
+static bool block_drips = true;
+module_param(block_drips, bool, 0444);
+MODULE_PARM_DESC(block_drips, "Block power-domain-system (DRIPS 0x0200c354) power-off (default: 1)");
+
+static int pcie_bridge_d3 = 0;
+module_param(pcie_bridge_d3, int, 0644);
+MODULE_PARM_DESC(pcie_bridge_d3, "bridge_d3 value for PCIe RP 0004:00:00.0, -1 = leave untouched (default: 0)");
+
+static bool pcie_icc_tweak = true;
+module_param(pcie_icc_tweak, bool, 0444);
+MODULE_PARM_DESC(pcie_icc_tweak, "Retag pcie-mem interconnect of 1c08000.pcie (default: 1)");
+
 static bool in_s2idle;
 
 /* 1. Regulators vreg_l2j_1p2 and vreg_l3j_0p8 kept on (usbc-ldo-always-on) */
@@ -254,7 +278,14 @@ static bool honor_never_power_down_ok(struct dev_pm_domain *pd)
 
 static void honor_setup_system_sleep_only(void)
 {
-	struct device *dev = bus_find_device_by_name(&platform_bus_type, NULL, "17500000.rsc");
+	struct device *dev;
+
+	if (!block_drips) {
+		pr_info("honor_deep_sleep_fix: block_drips=0, leaving power-domain-system governor untouched\n");
+		return;
+	}
+
+	dev = bus_find_device_by_name(&platform_bus_type, NULL, "17500000.rsc");
 	if (!dev)
 		return;
 
@@ -274,14 +305,24 @@ static void honor_setup_system_sleep_only(void)
 	put_device(dev);
 }
 
-/* 8. Keep bridge_d3 = 0 on PCIe root port 0004:00:00.0 (prevents DWC L2 timeout abort) */
+/*
+ * 8. bridge_d3 on PCIe root port 0004:00:00.0.
+ * 0 (old default) keeps the port in D0 to avoid the DWC "Timeout waiting for
+ * L2 entry" abort, but then pcie-qcom keeps its pcie-mem DDR vote through
+ * suspend. 1 allows D3 (what CXSD-capable X1E setups use).
+ */
 static void honor_enable_pcie_bridge_d3(void)
 {
-	struct pci_dev *rp = pci_get_domain_bus_and_slot(4, 0, 0);
+	struct pci_dev *rp;
+	int val = READ_ONCE(pcie_bridge_d3);
 
+	if (val < 0)
+		return;
+
+	rp = pci_get_domain_bus_and_slot(4, 0, 0);
 	if (rp) {
-		rp->bridge_d3 = 0;
-		pr_info("honor_deep_sleep_fix: disabled bridge_d3 on PCIe RP 0004:00:00.0 (prevent L2 timeout)\n");
+		rp->bridge_d3 = !!val;
+		pr_info("honor_deep_sleep_fix: set bridge_d3=%d on PCIe RP 0004:00:00.0\n", !!val);
 		pci_dev_put(rp);
 	}
 }
@@ -404,9 +445,13 @@ static struct icc_path *honor_pcie_icc_mem;
 
 static void honor_init_pcie_icc(void)
 {
-	struct device *dev = bus_find_device_by_name(&platform_bus_type, NULL, "1c08000.pcie");
+	struct device *dev;
 	struct qcom_pcie *pcie;
 
+	if (!pcie_icc_tweak)
+		return;
+
+	dev = bus_find_device_by_name(&platform_bus_type, NULL, "1c08000.pcie");
 	if (!dev)
 		return;
 

@@ -73,9 +73,12 @@
 │   ├── 10-runtime-pm.rules         # Persistent udev runtime power management rules
 │   ├── hibernate.conf              # systemd-sleep policy (HibernateMode=shutdown)
 │   ├── lid.conf                    # systemd-logind policy (hibernate on lid close)
-│   └── setup_lid.sh                # Unmasks suspend targets and installs lid configuration
+│   ├── setup_lid.sh                # Unmasks suspend targets and installs lid configuration
+│   └── diag/sleep_diag.sh          # Reproducible s2idle measurement (qcom_stats, votes, battery) -> results/
 ├── docs/
-│   └── DEEP_SLEEP_BREAKTHROUGH.md  # Technical Post-Mortem: Why s2idle (<0.5W) fails in EL1 & EL2, UFS/SMMU traps & Hibernate fixes
+│   ├── DEEP_SLEEP_BREAKTHROUGH.md  # Technical Post-Mortem: Why s2idle (<0.5W) fails in EL1 & EL2, UFS/SMMU traps & Hibernate fixes
+│   ├── STANDBY_ANALYSIS_2026-11.md # Review against other X1E projects: what may block CXSD/DDR (under test)
+│   └── STANDBY_TEST_PLAN.md        # Step-by-step measurement plan for the standby investigation
 ├── input/
 │   ├── 99-ignore-ghost-micmute.rules       # Udev rule to silence touchscreen mic-mute spam
 │   └── setup_input.sh                      # One-click installation for input fix
