@@ -37,17 +37,27 @@ module_param(sync_all_suppliers, int, 0644);
  * Test switches (see docs/STANDBY_TEST_PLAN.md). Defaults keep the
  * previous behaviour so existing installs are unchanged.
  *
- * block_drips=1: never let power-domain-system power off. This also means
- *   rpmh-rsc never flushes its sleep/wake votes on system_pd power-off, so
- *   CXSD/DDR collapse is impossible by construction while this is set.
+ * drips_mode: how power-domain-system (DRIPS, PSCI 0x0200c354) is handled.
+ *   0 = blocked completely (old behaviour): governor refuses runtime power-off
+ *       AND sd_count is pinned, which also blocks the s2idle path
+ *       (genpd_sync_power_off). rpmh-rsc then never flushes its sleep/wake
+ *       votes, so CXSD/DDR collapse is impossible by construction.
+ *   1 = system-sleep only: governor still refuses runtime-idle DRIPS (which
+ *       froze TrustZone after the first s2idle), but sd_count is not pinned,
+ *       so DRIPS can be entered from s2idle.
+ *   2 = untouched: original governor. Risky, see note above.
  * pcie_bridge_d3: value written to bridge_d3 of the Wi-Fi root port
  *   0004:00:00.0. 0 keeps the port in D0 (pcie-qcom then keeps a DDR vote
  *   through suspend); 1 allows D3 like mainline d4c79b63d82d.
  * pcie_icc_tweak=1: retag/re-vote the 1c08000.pcie pcie-mem path.
  */
-static bool block_drips = true;
-module_param(block_drips, bool, 0444);
-MODULE_PARM_DESC(block_drips, "Block power-domain-system (DRIPS 0x0200c354) power-off (default: 1)");
+static int drips_mode = 0;
+module_param(drips_mode, int, 0444);
+MODULE_PARM_DESC(drips_mode, "DRIPS (0x0200c354): 0=block, 1=system-sleep only, 2=untouched (default: 0)");
+
+static bool hold_usbc_ldos = true;
+module_param(hold_usbc_ldos, bool, 0444);
+MODULE_PARM_DESC(hold_usbc_ldos, "Keep vreg_l2j_1p2/vreg_l3j_0p8 (fd9000.phy) enabled (default: 1)");
 
 static int pcie_bridge_d3 = 0;
 module_param(pcie_bridge_d3, int, 0644);
@@ -169,7 +179,7 @@ static void honor_unhook_geni_serial(void)
 	}
 }
 
-static void honor_enable_pcie_bridge_d3(void);
+static void honor_set_pcie_bridge_d3(void);
 static void honor_init_pcie_icc(void);
 static void honor_sync_remaining_suppliers(void);
 
@@ -177,7 +187,7 @@ static int honor_pm_notify(struct notifier_block *nb, unsigned long mode, void *
 {
 	switch (mode) {
 	case PM_SUSPEND_PREPARE:
-		honor_enable_pcie_bridge_d3();
+		honor_set_pcie_bridge_d3();
 		honor_init_pcie_icc();
 		honor_sync_remaining_suppliers();
 		WRITE_ONCE(in_s2idle, true);
@@ -269,6 +279,7 @@ static void honor_disable_usb_wakeup(void)
 static struct generic_pm_domain *sys_pd;
 static struct dev_power_governor *orig_sys_gov;
 static struct dev_power_governor honor_sys_gov;
+static bool sys_pd_pinned;
 
 static bool honor_never_power_down_ok(struct dev_pm_domain *pd)
 {
@@ -280,8 +291,8 @@ static void honor_setup_system_sleep_only(void)
 {
 	struct device *dev;
 
-	if (!block_drips) {
-		pr_info("honor_deep_sleep_fix: block_drips=0, leaving power-domain-system governor untouched\n");
+	if (drips_mode >= 2) {
+		pr_info("honor_deep_sleep_fix: drips_mode=2, leaving power-domain-system governor untouched\n");
 		return;
 	}
 
@@ -297,9 +308,12 @@ static void honor_setup_system_sleep_only(void)
 			honor_sys_gov = *orig_sys_gov;
 			honor_sys_gov.power_down_ok = honor_never_power_down_ok;
 			gpd->gov = &honor_sys_gov;
-			atomic_inc(&gpd->sd_count);
-			pr_info("honor_deep_sleep_fix: installed system-sleep-only governor on %s\n",
-				gpd->name);
+			if (drips_mode == 0) {
+				atomic_inc(&gpd->sd_count);
+				sys_pd_pinned = true;
+			}
+			pr_info("honor_deep_sleep_fix: drips_mode=%d: runtime DRIPS blocked on %s, s2idle DRIPS %s\n",
+				drips_mode, gpd->name, sys_pd_pinned ? "blocked" : "allowed");
 		}
 	}
 	put_device(dev);
@@ -311,7 +325,7 @@ static void honor_setup_system_sleep_only(void)
  * L2 entry" abort, but then pcie-qcom keeps its pcie-mem DDR vote through
  * suspend. 1 allows D3 (what CXSD-capable X1E setups use).
  */
-static void honor_enable_pcie_bridge_d3(void)
+static void honor_set_pcie_bridge_d3(void)
 {
 	struct pci_dev *rp;
 	int val = READ_ONCE(pcie_bridge_d3);
@@ -481,9 +495,10 @@ static int __init honor_deep_sleep_init(void)
 	pr_info("honor_deep_sleep_fix: initializing X1E80100 deep sleep fixes\n");
 
 	honor_setup_system_sleep_only();
-	honor_hold_usbc_ldos();
+	if (hold_usbc_ldos)
+		honor_hold_usbc_ldos();
 	honor_hook_geni_serial();
-	honor_enable_pcie_bridge_d3();
+	honor_set_pcie_bridge_d3();
 	honor_init_pcie_icc();
 
 	ret = register_pm_notifier(&honor_pm_nb);
@@ -505,7 +520,8 @@ static void __exit honor_deep_sleep_exit(void)
 	honor_unhook_geni_serial();
 	honor_release_usbc_ldos();
 	if (sys_pd && orig_sys_gov) {
-		atomic_dec(&sys_pd->sd_count);
+		if (sys_pd_pinned)
+			atomic_dec(&sys_pd->sd_count);
 		sys_pd->gov = orig_sys_gov;
 	}
 	pr_info("honor_deep_sleep_fix: unloaded\n");

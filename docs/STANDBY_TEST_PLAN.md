@@ -50,13 +50,14 @@ options honor_deep_sleep_fix sync_all_suppliers=0 hold_usbc_ldos=1
 sudo power/diag/sleep_diag.sh run p1-baseline
 ```
 Expected: `cxsd`/`ddr` count unchanged (blocked by design). Record the W value as baseline.
-(`hold_usbc_ldos` is not a parameter of the current module source; the line is kept as installed.)
 
-## Phase 2: Let DRIPS happen (`block_drips=0`)
+## Phase 2: Allow DRIPS in s2idle only (`drips_mode=1`)
 
 ```text
-options honor_deep_sleep_fix sync_all_suppliers=0 block_drips=0
+options honor_deep_sleep_fix sync_all_suppliers=0 drips_mode=1
 ```
+Never use `drips_mode=2` and never `rmmod honor_deep_sleep_fix`: DRIPS from runtime idle
+has frozen the SoC before (TrustZone, after the first s2idle).
 First a 3-minute run (hang check), then a 30-minute run:
 ```bash
 sudo power/diag/sleep_diag.sh run p2-drips-short
@@ -69,7 +70,7 @@ is a major result (but at EL1 it is not expected).
 ## Phase 3: Allow the Wi-Fi root port into D3 (`pcie_bridge_d3=1`)
 
 ```text
-options honor_deep_sleep_fix sync_all_suppliers=0 block_drips=0 pcie_bridge_d3=1
+options honor_deep_sleep_fix sync_all_suppliers=0 drips_mode=1 pcie_bridge_d3=1
 ```
 Do **5 short runs + 1 long run**. Pass: no `Timeout waiting for L2 entry`, Wi-Fi works after
 resume, `0004:00:00.0 power_state` in `after.txt` was not stuck. Compare W with phase 2.
@@ -77,6 +78,8 @@ resume, `0004:00:00.0 power_state` in `after.txt` was not stuck. Compare W with 
 ## Phase 4: Module not loaded at all
 
 Comment out `honor_deep_sleep_fix` in `/etc/modules-load.d/honor-sleep.conf`, reboot.
+Note: without the module, runtime-idle DRIPS is not blocked either. If the machine froze in
+the past without the module, skip this phase and note it; do a 3-minute run first otherwise.
 ```bash
 sudo power/diag/sleep_diag.sh run p4-no-module
 ```

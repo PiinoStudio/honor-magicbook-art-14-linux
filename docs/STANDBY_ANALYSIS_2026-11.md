@@ -17,7 +17,7 @@ It replaces nothing yet: every point below is a **hypothesis until measured** wi
    parking, CL5/SS1 handling, LPASS votes). Other X1E devices reach CXSD + DDR at EL2
    at 0.15–0.28 W.
 
-## 1. `block_drips`: the module forbids the state we are trying to reach
+## 1. `drips_mode`: the module forbids the state we are trying to reach
 
 `honor_setup_system_sleep_only()` installs a governor on `power-domain-system` whose
 `power_down_ok()` always returns `false`, and additionally increments `sd_count`.
@@ -32,7 +32,16 @@ Therefore the EL1 conclusion in `DEEP_SLEEP_BREAKTHROUGH.md` ("Gunyah prevents c
 **confounded** for every test that ran with this module loaded. (Independent reports do agree
 that EL1 does not reach CXSD on X1E, but our own data cannot show it.)
 
-Now switchable: `options honor_deep_sleep_fix block_drips=0`.
+Two kernel mechanisms are involved, and only one of them is needed for safety:
+
+- the **governor** (`power_down_ok`) is consulted only for *runtime* idle. Blocking it is
+  justified: the old handoff notes record a TrustZone freeze when DRIPS was entered from
+  runtime idle after the first s2idle (this is also why the module must never be `rmmod`ed).
+- the pinned **`sd_count`** also blocks the *s2idle* path (`genpd_sync_power_off()`), i.e.
+  exactly the state we want during suspend.
+
+Other X1E projects make DRIPS "system-sleep only" for the same reason. Now switchable:
+`options honor_deep_sleep_fix drips_mode=1` (0 = old behaviour, 2 = untouched, risky).
 
 ## 2. `bridge_d3 = 0` keeps a DDR vote through suspend
 
