@@ -70,8 +70,17 @@ Working branch: `claude/peaceful-meitner-0wq9vl`.
   (`printf 1`). INT_MAX count stayed at 61, so the second run is just a repeat of the baseline.
 - `force_sync_state.sh list` confirms the blockers: interconnects wait on
   `1dfa000.crypto` (qcrypto blacklisted), `gcc`/`gpucc` wait on `3d6a000.gmu` (no driver).
-- **Next action: repeat phase 1a with the fixed script.**
 - Installed module source is now in `results/installed-module/`.
+
+## Phase 1a (second attempt, `results/20261118-2307-p1a-before`, `...2310-p1a-icc-synced`)
+
+- Fixed script worked: INT_MAX nodes 61 -> 0, nothing broke over SSH, no new dmesg lines.
+- **Power unchanged**: 8.33 W before vs. 8.35 W after (power_now avg). ICC boot votes are not
+  the cause of the awake idle draw. DDR still has real votes after sync (`ebi` avg ~1.98 GB/s).
+- New lead: **no cpufreq policies exist** (scmi-cpufreq does not register; SCMI logs
+  `Failed to add opps_by_lvl ... for NCC - ret:-16`). Also `qcom-iris` says `video hw is power on`
+  before its init fails. Details in the run's `notes.md`.
+- Not yet reviewed by Antigravity. Open: s2idle with ICC synced; why cpufreq is missing.
 
 ## Open questions sent to Antigravity
 

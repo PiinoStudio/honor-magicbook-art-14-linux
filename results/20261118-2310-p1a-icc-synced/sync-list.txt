@@ -1,0 +1,9 @@
+interconnect nodes at INT_MAX: 61
+== 3d90000.clock-controller [power-domain provider][clock provider] driver=gpucc-x1e80100
+   waiting on consumer: platform:3d6a000.gmu (link status: available)
+== 1700000.interconnect [interconnect provider] driver=qnoc-x1e80100
+   waiting on consumer: platform:1dfa000.crypto (link status: available)
+== 100000.clock-controller [power-domain provider][clock provider] driver=gcc-x1e80100
+   waiting on consumer: platform:3d6a000.gmu (link status: available)
+== interconnect-1 [interconnect provider] driver=qnoc-x1e80100
+   waiting on consumer: platform:1dfa000.crypto (link status: available)
