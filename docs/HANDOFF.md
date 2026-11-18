@@ -62,10 +62,20 @@ Working branch: `claude/peaceful-meitner-0wq9vl`.
   repo version. The repo version adds `drips_mode`, `pcie_bridge_d3`, `pcie_icc_tweak`,
   `hold_usbc_ldos`; it has been compiled on the Honor but not installed.
 
-## In progress
+## Phase 1a (first attempt, `results/20261118-2248-p1a-before`, `...2251-p1a-icc-synced`)
 
-Phase 1a (awake idle power before/after `force_sync_state.sh apply-icc`) was handed to
-Antigravity together with these open questions:
+- Awake idle on battery, brightness 52/255: **~8.8–9.0 W** (very high).
+- Forcing the interconnect sync **failed**: the script wrote `"1\n"`, but
+  `state_synced_store()` accepts only an exact `"1"` (`strcmp`). Fixed in `dd93450`
+  (`printf 1`). INT_MAX count stayed at 61, so the second run is just a repeat of the baseline.
+- `force_sync_state.sh list` confirms the blockers: interconnects wait on
+  `1dfa000.crypto` (qcrypto blacklisted), `gcc`/`gpucc` wait on `3d6a000.gmu` (no driver).
+- **Next action: repeat phase 1a with the fixed script.**
+- Installed module source is now in `results/installed-module/`.
+
+## Open questions sent to Antigravity
+
+Answers may be in its chat rather than in the repo; ask the owner:
 - where the source of the installed module is (to be saved in `results/installed-module/`),
 - why `qcrypto` is blacklisted and why `fw_devlink.sync_state=timeout`, `pcie_port_pm=force`,
   `pcie_aspm.policy=powersupersave` were added,
