@@ -5,6 +5,7 @@
 #   sleep_diag.sh snapshot <label>          # collect state only, no suspend
 #   sleep_diag.sh run <label>               # snapshot, s2idle until woken, snapshot, summary
 #   sleep_diag.sh ec-probe                  # read-only probe of the EC at I2C5 0x76
+#   sleep_diag.sh idle <label> [seconds]    # awake idle power on battery (default 180 s)
 #
 # Results go to <repo>/results/<YYYYmmdd-HHMM>-<label>/ (override with RESULTS_DIR=...).
 # Commit the whole directory unchanged. Do not edit or summarise the raw files.
@@ -32,7 +33,7 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 mountpoint -q "$DBG" || mount -t debugfs none "$DBG" 2>/dev/null
 
 cmd="${1:-}"; label="${2:-unnamed}"
-label="$(echo "$label" | tr -c 'A-Za-z0-9_.-' '_')"
+label="$(printf '%s' "$label" | tr -c 'A-Za-z0-9_.-' '_')"
 
 new_outdir() {
     local d="${RESULTS_DIR:-$REPO_DIR/results}/$(date +%Y%m%d-%H%M)-$label"
@@ -79,6 +80,11 @@ snapshot() {  # snapshot <outfile>
         for d in 100000.clock-controller 3d90000.clock-controller 1700000.interconnect interconnect-1 1dfa000.crypto; do
             echo "$d state_synced=$(cat /sys/bus/platform/devices/$d/state_synced 2>&1)  driver=$(basename "$(readlink /sys/bus/platform/devices/$d/driver 2>/dev/null)" 2>/dev/null)"
         done
+        echo "=== all devices with state_synced=0"
+        for f in $(find /sys/devices -name state_synced 2>/dev/null); do
+            [ "$(cat "$f" 2>/dev/null)" = "0" ] && echo "${f%/state_synced}"
+        done
+        echo "=== interconnect nodes at INT_MAX (boot bandwidth still held): $(grep -cE ' 214[0-9]{7} ' "$DBG/interconnect/interconnect_summary" 2>/dev/null)"
         echo "=== devices waiting for suppliers (deferred probe)"; dumpf "$DBG/devices_deferred"
         echo "=== LPASS macro clocks"
         for c in "$DBG"/clk/*LPASS_HW_MACRO* "$DBG"/clk/*LPASS_HW_DCODEC* "$DBG"/clk/*lpass*macro*; do
@@ -191,6 +197,30 @@ run)
     } > "$out/SUMMARY.md"
     cat "$out/SUMMARY.md"
     echo; echo "Wrote $out - commit the whole directory."
+    ;;
+
+idle)
+    out="$(new_outdir)"
+    bat="$(battery_dir)"; [ -n "$bat" ] || die "no battery found"
+    secs="${3:-180}"
+    [ "$(cat "$bat/status")" = "Discharging" ] || die "unplug the charger first (status=$(cat "$bat/status"))"
+    snapshot "$out/snapshot.txt"
+    echo "Measuring awake idle power for ${secs}s. Do not touch the machine." | tee "$out/notes.txt"
+    e0="$(cat "$bat/energy_now")"
+    : > "$out/power_now.txt"
+    for _ in $(seq 1 $(( secs / 2 ))); do
+        echo "$(date +%s) $(cat "$bat/power_now")" >> "$out/power_now.txt"; sleep 2
+    done
+    e1="$(cat "$bat/energy_now")"
+    {
+        echo "# Idle summary: $label"
+        echo "kernel: $(uname -r)"
+        echo "interconnect nodes at INT_MAX: $(grep -cE ' 214[0-9]{7} ' "$DBG/interconnect/interconnect_summary" 2>/dev/null)"
+        awk '{s+=$2; n++; if(min==""||$2<min)min=$2; if($2>max)max=$2} END{printf "power_now: avg %.3f W, min %.3f W, max %.3f W (%d samples)\n", s/n/1e6, min/1e6, max/1e6, n}' "$out/power_now.txt"
+        awk -v e=$(( e0 - e1 )) -v t="$secs" 'BEGIN{printf "energy_now delta: %d uWh -> %.3f W\n", e, e/1e6/(t/3600)}'
+        echo "brightness: $(cat /sys/class/backlight/*/brightness 2>/dev/null | head -1)/$(cat /sys/class/backlight/*/max_brightness 2>/dev/null | head -1)"
+    } > "$out/SUMMARY.md"
+    cat "$out/SUMMARY.md"; echo "Wrote $out"
     ;;
 
 ec-probe)

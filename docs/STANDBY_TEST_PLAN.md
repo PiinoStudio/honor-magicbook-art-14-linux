@@ -41,6 +41,20 @@ sudo power/diag/sleep_diag.sh ec-probe
 Note in `notes.md`: which DTB/initrd GRUB actually loads, and whether a newer Fedora kernel
 than 7.2.11 is installed (`rpm -q kernel`).
 
+## Phase 1a: Awake idle power vs. forced interconnect sync (no suspend)
+
+Battery only, screen on, same brightness for both runs, no user input during measurement.
+```bash
+sudo power/diag/force_sync_state.sh list | tee /tmp/sync-list.txt
+sudo power/diag/sleep_diag.sh idle p1a-before 180
+sudo power/diag/force_sync_state.sh apply-icc | tee /tmp/sync-apply.txt
+sudo power/diag/sleep_diag.sh idle p1a-icc-synced 180
+```
+Copy both `/tmp/sync-*.txt` into the second run directory. Then check and note in `notes.md`:
+display (flicker/black?), Wi-Fi, audio playback, USB, keyboard/touchpad. Any `dmesg` errors
+after the apply step go into the run directory as `dmesg-after-apply.txt`.
+Pass: INT_MAX count drops and nothing breaks. Do not force `gcc`/`gpucc` in this phase.
+
 ## Phase 1: Baseline (current defaults)
 
 ```text

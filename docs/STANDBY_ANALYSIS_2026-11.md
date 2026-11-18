@@ -113,6 +113,30 @@ What they needed, compared with our `honor_el2.dts` attempt:
   `system/` clock workaround becomes unnecessary. Until then, wall-clock time may not advance
   across suspend, which corrupts W calculations (the diag script uses AOSS ticks instead).
 
+## 6b. Phase 0 findings (results/20261118-2228-p0-inventory_)
+
+Measured facts (EL1, 7.2.11, module from an older local build loaded):
+
+- **Interconnects never reached `sync_state()`**: `state_synced=0` for `1700000.interconnect`
+  and `interconnect-1`; 61 of 152 interconnect nodes still carry the boot vote `2147483647`,
+  including `ebi` (DDR) and `llcc_mc`. The ICC core only drops boot votes once *all* providers
+  have synced, so DDR/LLCC are held at maximum bandwidth permanently, awake and in s2idle.
+  Likely blockers: `modprobe.blacklist=qcrypto` (`crypto@1dfa000` never probes) and the GMU
+  node without a driver. `fw_devlink.sync_state=timeout` is on the cmdline but no
+  "Forcing sync_state()" message appears in dmesg. **Prime suspect for the 3–8 W.**
+- **Clock controllers unsynced too** (`gcc`, `gpucc`): boot-on GDSCs without consumers stay on,
+  e.g. `gcc_usb30_tert_gdsc`, `gcc_usb20_prim_gdsc`.
+- **RTC**: `qseecom: untested machine, skipping` -> no UEFI vars -> `rtc@6100` deferred forever.
+  Confirms the missing QSEECOM allowlist entry (fixed upstream July 2026).
+- **LPASS macros**: `LPASS_HW_MACRO`/`LPASS_HW_DCODEC` `enable_count=5` with all PCM streams
+  closed (needs the v7.3 macro PM fixes).
+- **ADSP**: 137 063 sleep entries in ~1 285 s (~107 wakeups/s) although `qcom_adsp_pwr_lmts`
+  is loaded.
+- **EC probe** (bus 3 = `i2c@b94000`, 0x76): FW-version read returned `00 00 00 00`, thermal
+  read failed. Inconclusive; no writes to the EC until clarified.
+- The **installed** `honor_deep_sleep_fix` is not the repo version (it has `s2idle_wake_sec`).
+- `serial-getty@hvc0` inactive (relevant for EL2 later).
+
 ## 7. Second generation (X2 Elite / "Glymur")
 
 Qualcomm upstreams early this time (GPU/display in 6.19, three laptop DTS in 7.4, an
