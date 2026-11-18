@@ -32,7 +32,8 @@ unsynced() {
 
 force() {  # force <device sysfs path>
     local d="$1"
-    if echo 1 > "$d/state_synced" 2>/dev/null; then
+    # the kernel compares the buffer with "1" exactly, so no trailing newline
+    if printf 1 > "$d/state_synced" 2>/dev/null; then
         echo "forced: $(basename "$d") -> state_synced=$(cat "$d/state_synced")"
     else
         echo "FAILED: $(basename "$d") (attribute not writable on this kernel?)"
