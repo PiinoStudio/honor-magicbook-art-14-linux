@@ -104,6 +104,10 @@ Working branch: `claude/peaceful-meitner-0wq9vl`.
   **resume hung** (dark blue screen, no network; forced power-off). Label reverted, so lid close
   suspends again. **Do not re-enable hibernate until resume is debugged.** The "working fallback"
   above is not true for the current install.
+- cpufreq A/B repeated on a settled boot (`results/20261119-1024-ab-A2-schedutil/notes.md`):
+  **~3.7 W saved** (6.33 vs. 10.04 W at 2/255), reviewed by Antigravity. Open: occasional
+  frequency requests that are not applied under load.
+- Measurement default is now 120 s per state; use the "after 60 s" average.
 - **Next actions:** debug hibernate resume (pm_test levels, test without scmi-cpufreq); repeat ICC
   sync at 2/255; let the lid inhibitor in `sleep_diag.sh run` cover the whole run.
 

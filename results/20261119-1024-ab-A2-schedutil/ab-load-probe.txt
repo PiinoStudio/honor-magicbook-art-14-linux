@@ -1,0 +1,3 @@
+cpu0: 3391 MHz (cycles=3385022342, cputime=0.998s)
+cpu4: 712 MHz (cycles=709508637, cputime=0.996s)
+cpu8: 713 MHz (cycles=708732485, cputime=0.995s)

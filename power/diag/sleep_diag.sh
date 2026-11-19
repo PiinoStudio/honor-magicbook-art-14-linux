@@ -5,7 +5,7 @@
 #   sleep_diag.sh snapshot <label>          # collect state only, no suspend
 #   sleep_diag.sh run <label>               # snapshot, s2idle until woken, snapshot, summary
 #   sleep_diag.sh ec-probe                  # read-only probe of the EC at I2C5 0x76
-#   sleep_diag.sh idle <label> [seconds]    # awake idle power on battery (default 180 s)
+#   sleep_diag.sh idle <label> [seconds]    # awake idle power on battery (default 120 s)
 #
 # Results go to <repo>/results/<YYYYmmdd-HHMM>-<label>/ (override with RESULTS_DIR=...).
 # Commit the whole directory unchanged. Do not edit or summarise the raw files.
@@ -206,7 +206,7 @@ run)
 idle)
     out="$(new_outdir)"
     bat="$(battery_dir)"; [ -n "$bat" ] || die "no battery found"
-    secs="${3:-180}"
+    secs="${3:-120}"   # fuel gauge settles in ~45 s; the "after 60 s" average is the number to use
     [ "$(cat "$bat/status")" = "Discharging" ] || die "unplug the charger first (status=$(cat "$bat/status"))"
     snapshot "$out/snapshot.txt"
     echo "Measuring awake idle power for ${secs}s. Do not touch the machine." | tee "$out/notes.txt"
