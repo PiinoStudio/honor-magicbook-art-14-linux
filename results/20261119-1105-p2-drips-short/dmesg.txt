@@ -1,0 +1,50 @@
+[  231.712401] PM: suspend entry (s2idle)
+[  231.780069] Filesystems sync: 0.067 seconds
+[  232.057968] honor_deep_sleep_fix: set bridge_d3=0 on PCIe RP 0004:00:00.0
+[  232.058144] honor_deep_sleep_fix: configured pcie-mem icc tag=3, bw=250000
+[  232.063638] Freezing user space processes
+[  232.065625] Freezing user space processes completed (elapsed 0.001 seconds)
+[  232.065627] OOM killer disabled.
+[  232.065629] Freezing remaining freezable tasks
+[  232.066609] Freezing remaining freezable tasks completed (elapsed 0.000 seconds)
+[  232.066613] printk: Suspending console(s) (use no_console_suspend to debug)
+[  232.083681] GFP mask restricted
+[  232.085449] wlP4p1s0: deauthenticating from 62:b5:8d:06:0f:40 by local choice (Reason: 3=DEAUTH_LEAVING)
+[  232.124811] dwc3-qcom a800000.usb: port-1 HS-PHY not in L2
+[  232.126691] dwc3-qcom a600000.usb: port-1 HS-PHY not in L2
+[  232.127401] dwc3-qcom a400000.usb: port-1 HS-PHY not in L2
+[  232.127405] dwc3-qcom a400000.usb: port-2 HS-PHY not in L2
+[  232.628227] i2c_hid_of 2-005d: device returned incorrect report (255 vs 3 expected)
+[  232.629684] honor_deep_sleep_fix: a98000.serial pm_runtime_force_suspend ret=0, pstate=0
+[  232.630741] PM: suspend of devices complete after 547.066 msecs
+[  232.630747] PM: start suspend of devices complete after 564.113 msecs
+[  232.630750] PM: suspend devices took 0.564 seconds
+[  232.724461] PM: late suspend of devices complete after 93.708 msecs
+[  232.741371] PM: noirq suspend of devices complete after 16.541 msecs
+[  232.741377] PM: suspend-to-idle
+[  232.741518] Timekeeping suspended for 191.545 seconds
+[  232.741535] PM: Triggering wakeup from IRQ 127
+[  232.741641] PM: resume from suspend-to-idle
+[  232.756510] PM: noirq resume of devices complete after 14.865 msecs
+[  232.815385] mhi mhi0: Requested to power ON
+[  232.815401] mhi mhi0: Power on setup success
+[  232.898583] mhi mhi0: Wait for device to enter SBL or Mission mode
+[  233.272872] PM: early resume of devices complete after 515.878 msecs
+[  233.276290] honor_deep_sleep_fix: a98000.serial pm_runtime_force_resume ret=0, pstate=128
+[  233.280552] ath12k_wifi7_pci 0004:01:00.0: qmi dma allocation failed (7274496 B type 1), will try later with small size
+[  233.288283] ath12k_wifi7_pci 0004:01:00.0: chip_id 0x2 chip_family 0x4 board_id 0xff soc_id 0x40170200
+[  233.288303] ath12k_wifi7_pci 0004:01:00.0: fw_version 0x1103006c fw_build_timestamp 2026-03-06 09:10 fw_build_id QC_IMAGE_VERSION_STRING=WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+[  233.498554] hwmon hwmon68: PM: parent phy0 should not be sleeping
+[  233.839169] i2c_hid_of 2-005d: device returned incorrect report (255 vs 3 expected)
+[  233.874511] PM: resume of devices complete after 601.642 msecs
+[  233.874532] GFP mask restored
+[  234.112583] [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+[  234.113095] [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+[  234.375772] [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+[  234.376284] [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+[  234.964954] PM: resume devices took 1.692 seconds
+[  234.965413] OOM killer enabled.
+[  234.965415] Restarting tasks: Starting
+[  234.966827] Restarting tasks: Done
+[  234.966949] random: crng reseeded on system resumption
+[  234.977085] PM: suspend exit

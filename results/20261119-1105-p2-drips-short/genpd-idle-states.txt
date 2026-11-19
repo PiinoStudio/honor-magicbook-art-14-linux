@@ -1,0 +1,15 @@
+--- /sys/kernel/debug/pm_genpd/power-domain-cpu-cluster0/idle_states ---
+State  Time(ms)       Usage      Rejected   Above      Below      S2idle
+S0     21672          6826       7          3383       51         0
+S1     326124         24247      16         12611      0          1
+--- /sys/kernel/debug/pm_genpd/power-domain-cpu-cluster1/idle_states ---
+State  Time(ms)       Usage      Rejected   Above      Below      S2idle
+S0     11566          2654       0          753        37         0
+S1     344642         10667      1          3251       0          1
+--- /sys/kernel/debug/pm_genpd/power-domain-cpu-cluster2/idle_states ---
+State  Time(ms)       Usage      Rejected   Above      Below      S2idle
+S0     12772          3030       2          900        37         0
+S1     344367         11029      3          3428       0          1
+--- /sys/kernel/debug/pm_genpd/power-domain-system/idle_states ---
+State  Time(ms)       Usage      Rejected   Above      Below      S2idle
+S0     3757           244        10         55         0          1

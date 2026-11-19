@@ -1,0 +1,50 @@
+Nov 19 11:05:34 <host> kernel: PM: suspend entry (s2idle)
+Nov 19 11:05:34 <host> kernel: Filesystems sync: 0.067 seconds
+Nov 19 11:05:34 <host> kernel: honor_deep_sleep_fix: set bridge_d3=0 on PCIe RP 0004:00:00.0
+Nov 19 11:05:34 <host> kernel: honor_deep_sleep_fix: configured pcie-mem icc tag=3, bw=250000
+Nov 19 11:08:49 <host> kernel: Freezing user space processes
+Nov 19 11:08:49 <host> kernel: Freezing user space processes completed (elapsed 0.001 seconds)
+Nov 19 11:08:49 <host> kernel: OOM killer disabled.
+Nov 19 11:08:49 <host> kernel: Freezing remaining freezable tasks
+Nov 19 11:08:49 <host> kernel: Freezing remaining freezable tasks completed (elapsed 0.000 seconds)
+Nov 19 11:08:49 <host> kernel: printk: Suspending console(s) (use no_console_suspend to debug)
+Nov 19 11:08:49 <host> kernel: GFP mask restricted
+Nov 19 11:08:49 <host> kernel: wlP4p1s0: deauthenticating from 62:b5:8d:06:0f:40 by local choice (Reason: 3=DEAUTH_LEAVING)
+Nov 19 11:08:49 <host> kernel: dwc3-qcom a800000.usb: port-1 HS-PHY not in L2
+Nov 19 11:08:49 <host> kernel: dwc3-qcom a600000.usb: port-1 HS-PHY not in L2
+Nov 19 11:08:49 <host> kernel: dwc3-qcom a400000.usb: port-1 HS-PHY not in L2
+Nov 19 11:08:49 <host> kernel: dwc3-qcom a400000.usb: port-2 HS-PHY not in L2
+Nov 19 11:08:49 <host> kernel: i2c_hid_of 2-005d: device returned incorrect report (255 vs 3 expected)
+Nov 19 11:08:49 <host> kernel: honor_deep_sleep_fix: a98000.serial pm_runtime_force_suspend ret=0, pstate=0
+Nov 19 11:08:49 <host> kernel: PM: suspend of devices complete after 547.066 msecs
+Nov 19 11:08:49 <host> kernel: PM: start suspend of devices complete after 564.113 msecs
+Nov 19 11:08:49 <host> kernel: PM: suspend devices took 0.564 seconds
+Nov 19 11:08:49 <host> kernel: PM: late suspend of devices complete after 93.708 msecs
+Nov 19 11:08:49 <host> kernel: PM: noirq suspend of devices complete after 16.541 msecs
+Nov 19 11:08:49 <host> kernel: PM: suspend-to-idle
+Nov 19 11:08:49 <host> kernel: Timekeeping suspended for 191.545 seconds
+Nov 19 11:08:49 <host> kernel: PM: Triggering wakeup from IRQ 127
+Nov 19 11:08:49 <host> kernel: PM: resume from suspend-to-idle
+Nov 19 11:08:49 <host> kernel: PM: noirq resume of devices complete after 14.865 msecs
+Nov 19 11:08:49 <host> kernel: mhi mhi0: Requested to power ON
+Nov 19 11:08:49 <host> kernel: mhi mhi0: Power on setup success
+Nov 19 11:08:49 <host> kernel: mhi mhi0: Wait for device to enter SBL or Mission mode
+Nov 19 11:08:49 <host> kernel: PM: early resume of devices complete after 515.878 msecs
+Nov 19 11:08:49 <host> kernel: honor_deep_sleep_fix: a98000.serial pm_runtime_force_resume ret=0, pstate=128
+Nov 19 11:08:49 <host> kernel: ath12k_wifi7_pci 0004:01:00.0: qmi dma allocation failed (7274496 B type 1), will try later with small size
+Nov 19 11:08:49 <host> kernel: ath12k_wifi7_pci 0004:01:00.0: chip_id 0x2 chip_family 0x4 board_id 0xff soc_id 0x40170200
+Nov 19 11:08:49 <host> kernel: ath12k_wifi7_pci 0004:01:00.0: fw_version 0x1103006c fw_build_timestamp 2026-03-06 09:10 fw_build_id QC_IMAGE_VERSION_STRING=WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Nov 19 11:08:49 <host> kernel: hwmon hwmon68: PM: parent phy0 should not be sleeping
+Nov 19 11:08:49 <host> kernel: i2c_hid_of 2-005d: device returned incorrect report (255 vs 3 expected)
+Nov 19 11:08:49 <host> kernel: PM: resume of devices complete after 601.642 msecs
+Nov 19 11:08:49 <host> kernel: GFP mask restored
+Nov 19 11:08:49 <host> kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+Nov 19 11:08:49 <host> kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+Nov 19 11:08:49 <host> kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+Nov 19 11:08:49 <host> kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+Nov 19 11:08:49 <host> kernel: PM: resume devices took 1.692 seconds
+Nov 19 11:08:49 <host> kernel: OOM killer enabled.
+Nov 19 11:08:49 <host> kernel: Restarting tasks: Starting
+Nov 19 11:08:49 <host> kernel: Restarting tasks: Done
+Nov 19 11:08:49 <host> kernel: random: crng reseeded on system resumption
+Nov 19 11:08:49 <host> kernel: PM: suspend exit
