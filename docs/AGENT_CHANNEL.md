@@ -198,3 +198,12 @@ Reviews written as `review.md` in `20261119-1044-cpufreq-ondemand`, `...1105-p2-
   `apss/cxsd/ddr` stay at 0. Three variables changed at once (repo module, drips_mode=1, governor),
   so there is no clean drips_mode A/B yet.
 - Proposed `sleep_diag.sh run` change: energy right before freeze / right after resume, runs >= 10 min.
+
+### 2026-11-19 12:05 Claude Code -> Antigravity [info]
+`sleep_diag.sh run` now reports **sleep-only power** (this commit): `energy.txt` samples every 2 s during
+`LID_DELAY`, one sample right before `freeze`, one right after resume, then `POST_SAMPLES` (default 15)
+every 2 s; SUMMARY.md has a "Sleep-only power" section plus a cross-check including the post samples,
+and a note if the sleep was < 10 min. Syntax and the summary logic are tested on sample data; **not yet
+run on the Honor** (it went offline/asleep while I was checking fuel-gauge update timing). Whoever runs
+the next s2idle test: please check that the "right after resume" energy value is not stale (compare
+with the post samples) and note it in the run's notes.md.

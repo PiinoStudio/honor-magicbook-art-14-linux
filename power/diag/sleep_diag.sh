@@ -15,6 +15,10 @@
 #   EC_MSTANDBY=1       send EC modern-standby enter/exit (cmd 0x23) around the suspend
 #                       (only after "ec-probe" returned a plausible firmware version!)
 #   STOP_AUDIO_USER=<user>  stop pipewire/wireplumber of that user before suspending
+#   POST_SAMPLES=15     energy samples (every 2 s) after resume, written to energy.txt
+#
+# SUMMARY.md reports "sleep-only power" from energy_now read right before freeze and right after
+# resume. Sleep at least 10 min for comparisons (fuel gauge: 1 mWh steps, ~45 s averaging).
 #
 # The suspend is entered by writing "freeze" to /sys/power/state directly, so the
 # systemd-sleep hooks (snapdragon-power-saver.sh) and FailureAction= overrides are
@@ -155,13 +159,20 @@ run)
     systemd-inhibit --what=handle-lid-switch --who=sleep_diag --why="measurement" --mode=block \
         sleep infinity & inh_pid=$!
     trap 'kill $inh_pid 2>/dev/null' EXIT
-    sleep "${LID_DELAY:-20}"
+    # energy.txt: "<epoch.ns> <phase> <energy_now uWh> <power_now uW>", sampled every 2 s while
+    # awake, plus one sample right before freeze and right after resume (sleep-only power).
+    esample() { echo "$(date +%s.%N) $1 $(cat "$bat/energy_now") $(cat "$bat/power_now")" >> "$out/energy.txt"; }
+    : > "$out/energy.txt"
+    for _ in $(seq 1 $(( ${LID_DELAY:-20} / 2 ))); do esample pre; sleep 2; done
     [ -n "$ec_bus" ] && i2cset -y "$ec_bus" 0x76 0x23 0x01 && echo 'EC modern standby ENTER sent' | tee -a "$out/notes.txt"
+    esample freeze
     echo freeze > /sys/power/state; rc=$?
+    esample resume
     [ -n "$ec_bus" ] && i2cset -y "$ec_bus" 0x76 0x23 0x00 && echo 'EC modern standby EXIT sent' | tee -a "$out/notes.txt"
     echo "freeze rc=$rc" | tee -a "$out/notes.txt"
 
-    sleep 5   # let resume settle
+    # let resume settle; keep sampling, the fuel gauge may report a stale value right after resume
+    for _ in $(seq 1 "${POST_SAMPLES:-15}"); do sleep 2; esample post; done
     e1="$(cat "$bat/energy_now")"; t1="$(date +%s)"
     a1="$(stat_field "$DBG/qcom_stats/apss" "Accumulated Duration")"
     snapshot "$out/after.txt"
@@ -183,7 +194,24 @@ run)
         if [ -n "$a0" ] && [ -n "$a1" ] && [ $(( (a1 - a0) / TICKS_PER_SEC )) -gt "$dt" ]; then
             dt=$(( (a1 - a0) / TICKS_PER_SEC )); echo "(using apss delta as duration)"
         fi
-        [ "$dt" -gt 0 ] && awk -v e=$(( e0 - e1 )) -v t="$dt" 'BEGIN{printf "average power: %.3f W over %d s\n", e/1e6/(t/3600), t}'
+        [ "$dt" -gt 0 ] && awk -v e=$(( e0 - e1 )) -v t="$dt" 'BEGIN{printf "average power (whole window incl. awake parts): %.3f W over %d s\n", e/1e6/(t/3600), t}'
+        echo
+        echo "## Sleep-only power (use this number)"
+        ts="$(grep -m1 -oE 'Timekeeping suspended for [0-9.]+' "$out/dmesg.txt" | awk '{print $4}')"
+        echo "kernel: Timekeeping suspended for ${ts:-?} s"
+        awk -v ts="${ts:-0}" '
+            $2=="freeze"{tf=$1; ef=$3}
+            $2=="resume"{tr=$1; er=$3}
+            $2=="post"{lp_t=$1; lp_e=$3; if(!fp_t){fp_t=$1; fp_e=$3}}
+            END{
+              if(!tf||!tr){print "freeze/resume samples missing"; exit}
+              d=tr-tf
+              printf "energy right before freeze -> right after resume: %d -> %d uWh over %.1f s\n", ef, er, d
+              if(d>0 && ef>er) printf "sleep-only power: %.3f W\n", (ef-er)/1e6/(d/3600)
+              else print "sleep-only power: n/a (fuel gauge did not update across the sleep)"
+              if(lp_t && lp_t>tf) printf "cross-check freeze -> last post sample (%.1f s, incl. ~%.0f s awake): %.3f W\n", lp_t-tf, lp_t-tr, (ef-lp_e)/1e6/((lp_t-tf)/3600)
+              if(ts>0 && ts<600) print "NOTE: sleep < 10 min; fuel-gauge resolution and averaging make this figure rough"
+            }' "$out/energy.txt"
         echo
         echo "| stat | count before | count after | accumulated delta (s) |"
         echo "|---|---|---|---|"
