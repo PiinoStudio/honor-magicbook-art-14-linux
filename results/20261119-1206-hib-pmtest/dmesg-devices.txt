@@ -1,0 +1,41 @@
+[ 2212.690714] PMTEST_MARK_devices
+[ 2212.690919] PM: hibernation: hibernation entry
+[ 2212.999478] Filesystems sync: 0.016 seconds
+[ 2213.002207] Freezing user space processes
+[ 2213.005031] Freezing user space processes completed (elapsed 0.002 seconds)
+[ 2213.005034] OOM killer disabled.
+[ 2213.005518] PM: hibernation: Basic memory bitmaps created
+[ 2213.028005] PM: hibernation: Preallocating image memory
+[ 2214.147869] PM: hibernation: Allocated 1581766 pages for snapshot
+[ 2214.147872] PM: hibernation: Allocated 6327064 kbytes in 1.11 seconds (5700.05 MB/s)
+[ 2214.147874] Freezing remaining freezable tasks
+[ 2214.148959] Freezing remaining freezable tasks completed (elapsed 0.001 seconds)
+[ 2214.148960] printk: Suspending console(s) (use no_console_suspend to debug)
+[ 2214.149016] GFP mask restricted
+[ 2214.149554] wlP4p1s0: deauthenticating from <ap-mac> by local choice (Reason: 3=DEAUTH_LEAVING)
+[ 2214.187592] dwc3-qcom a800000.usb: port-1 HS-PHY not in L2
+[ 2214.189622] dwc3-qcom a600000.usb: port-1 HS-PHY not in L2
+[ 2214.190212] dwc3-qcom a400000.usb: port-1 HS-PHY not in L2
+[ 2214.190214] dwc3-qcom a400000.usb: port-2 HS-PHY not in L2
+[ 2214.688243] i2c_hid_of 2-005d: device returned incorrect report (255 vs 3 expected)
+[ 2214.690898] PM: freeze of devices complete after 541.880 msecs
+[ 2214.690902] PM: hibernation: hibernation debug: Waiting for 5 second(s).
+[ 2220.505473] i2c_hid_of 2-005d: device returned incorrect report (255 vs 3 expected)
+[ 2220.512744] usb usb1: root hub lost power or was reset
+[ 2220.512747] usb usb2: root hub lost power or was reset
+[ 2220.517450] usb usb3: root hub lost power or was reset
+[ 2220.517452] usb usb5: root hub lost power or was reset
+[ 2220.522199] usb usb4: root hub lost power or was reset
+[ 2220.522201] usb usb6: root hub lost power or was reset
+[ 2220.641932] PM: restore of devices complete after 704.432 msecs
+[ 2220.641955] GFP mask restored
+[ 2220.884564] [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+[ 2220.885150] [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+[ 2221.147385] [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+[ 2221.147967] [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+[ 2221.737594] PM: hibernation: Hibernation image restored successfully.
+[ 2221.737934] PM: hibernation: Basic memory bitmaps freed
+[ 2221.738443] OOM killer enabled.
+[ 2221.738445] Restarting tasks: Starting
+[ 2221.740216] Restarting tasks: Done
+[ 2221.750487] PM: hibernation: hibernation exit

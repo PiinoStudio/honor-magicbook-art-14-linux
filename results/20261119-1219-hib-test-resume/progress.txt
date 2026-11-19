@@ -1,0 +1,3 @@
+12:19:18 START test_resume disk=[shutdown] reboot suspend test_resume
+12:19:52 END rc=0 disk=[shutdown] reboot suspend test_resume
+12:19:55 DONE

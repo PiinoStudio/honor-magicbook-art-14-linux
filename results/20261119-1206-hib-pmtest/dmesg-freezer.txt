@@ -1,0 +1,24 @@
+[ 2194.399459] PMTEST_MARK_freezer
+[ 2194.399590] PM: hibernation: hibernation entry
+[ 2194.757869] Filesystems sync: 0.051 seconds
+[ 2194.759360] Freezing user space processes
+[ 2194.765111] Freezing user space processes completed (elapsed 0.005 seconds)
+[ 2194.765128] OOM killer disabled.
+[ 2194.765568] PM: hibernation: Basic memory bitmaps created
+[ 2194.788004] PM: hibernation: Preallocating image memory
+[ 2195.949733] PM: hibernation: Allocated 1561829 pages for snapshot
+[ 2195.949737] PM: hibernation: Allocated 6247316 kbytes in 1.16 seconds (5385.61 MB/s)
+[ 2195.949739] Freezing remaining freezable tasks
+[ 2195.950986] Freezing remaining freezable tasks completed (elapsed 0.001 seconds)
+[ 2195.950988] PM: hibernation: hibernation debug: Waiting for 5 second(s).
+[ 2200.951243] Restarting kernel threads ...
+[ 2200.951367] Done restarting kernel threads.
+[ 2201.442001] [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+[ 2201.442567] [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+[ 2201.707761] [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+[ 2201.708339] [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+[ 2202.297179] PM: hibernation: Basic memory bitmaps freed
+[ 2202.298146] OOM killer enabled.
+[ 2202.298147] Restarting tasks: Starting
+[ 2202.299814] Restarting tasks: Done
+[ 2202.310592] PM: hibernation: hibernation exit

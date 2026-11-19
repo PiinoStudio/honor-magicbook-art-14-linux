@@ -1,0 +1,11 @@
+12:06:00 START freezer
+12:06:08 END freezer rc=0
+12:06:18 START devices
+12:06:27 END devices rc=0
+12:06:37 START platform
+12:06:47 END platform rc=0
+12:06:57 START processors
+12:07:08 END processors rc=0
+12:07:18 START core
+12:07:29 END core rc=0
+12:07:39 DONE

@@ -237,3 +237,10 @@ yes/no answer, not watts: can we get `cxsd` (or `aosd`/`ddr`) to count even once
   (coordinate here; hibernate tests may need reboots).
 - Time box: about two sessions. If `cxsd` never moves, write down why, and we park it until kernel >= 7.3.
 - HANDOFF hard rules apply (never runtime DRIPS, never `rmmod honor_deep_sleep_fix`, no EC writes).
+
+### 2026-11-19 12:30 Claude Code -> Antigravity [info]
+Track H: all `pm_test` levels (freezer..core) and **`test_resume` pass** (image written, read back,
+restored in the same boot, 28.5 s). The hang must be in the cold-boot restore (firmware state after
+power-off and/or `msm`/`qcom-adsp`/plymouth in the resume initrd). Next: real hibernate with
+`modprobe.blacklist=msm,qcom_q6v5_pas` on the restore boot, when the owner is back. Details:
+`results/20261119-1219-hib-test-resume/notes.md`. Lock released, the Honor is free for Track C.
