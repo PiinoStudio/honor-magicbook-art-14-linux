@@ -16,6 +16,9 @@ Working branch: `claude/peaceful-meitner-0wq9vl`.
 
 ## Collaboration rules
 
+**Agent-to-agent messages go to `docs/AGENT_CHANNEL.md`; Honor ownership is enforced by
+`power/diag/honor_lock.sh` on the Honor (protocol in the channel file).**
+
 1. **One owner of the Honor at a time.** Proposed split: Claude Code runs experiments and
    measurements on the Honor; Antigravity prepares the newer kernel (test plan phase 7) and
    reviews results. Hand over explicitly via the owner.
