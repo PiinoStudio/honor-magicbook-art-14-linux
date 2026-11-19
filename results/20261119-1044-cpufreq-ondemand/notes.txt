@@ -1,0 +1,1 @@
+Measuring awake idle power for 120s. Do not touch the machine.
