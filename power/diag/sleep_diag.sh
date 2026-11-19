@@ -150,12 +150,16 @@ run)
     if [ "${EC_MSTANDBY:-0}" = "1" ]; then
         ec_bus="$(find_ec_bus)"; [ -n "$ec_bus" ] || die "EC bus (b94000) not found"
     fi
+    # Hold the lid inhibitor for the whole run (incl. the after-snapshot), so a lid closed while
+    # suspended does not trigger a second, logind-driven suspend inside the measurement window.
     systemd-inhibit --what=handle-lid-switch --who=sleep_diag --why="measurement" --mode=block \
-        bash -c "sleep ${LID_DELAY:-20}; \
-                 [ -n '$ec_bus' ] && i2cset -y $ec_bus 0x76 0x23 0x01 && echo 'EC modern standby ENTER sent'; \
-                 echo freeze > /sys/power/state; rc=\$?; \
-                 [ -n '$ec_bus' ] && i2cset -y $ec_bus 0x76 0x23 0x00 && echo 'EC modern standby EXIT sent'; \
-                 echo \"freeze rc=\$rc\"" 2>&1 | tee -a "$out/notes.txt"
+        sleep infinity & inh_pid=$!
+    trap 'kill $inh_pid 2>/dev/null' EXIT
+    sleep "${LID_DELAY:-20}"
+    [ -n "$ec_bus" ] && i2cset -y "$ec_bus" 0x76 0x23 0x01 && echo 'EC modern standby ENTER sent' | tee -a "$out/notes.txt"
+    echo freeze > /sys/power/state; rc=$?
+    [ -n "$ec_bus" ] && i2cset -y "$ec_bus" 0x76 0x23 0x00 && echo 'EC modern standby EXIT sent' | tee -a "$out/notes.txt"
+    echo "freeze rc=$rc" | tee -a "$out/notes.txt"
 
     sleep 5   # let resume settle
     e1="$(cat "$bat/energy_now")"; t1="$(date +%s)"
@@ -206,18 +210,23 @@ idle)
     [ "$(cat "$bat/status")" = "Discharging" ] || die "unplug the charger first (status=$(cat "$bat/status"))"
     snapshot "$out/snapshot.txt"
     echo "Measuring awake idle power for ${secs}s. Do not touch the machine." | tee "$out/notes.txt"
-    e0="$(cat "$bat/energy_now")"
+    e0="$(cat "$bat/energy_now")"; t0="$(date +%s.%N)"
     : > "$out/power_now.txt"
     for _ in $(seq 1 $(( secs / 2 ))); do
         echo "$(date +%s) $(cat "$bat/power_now")" >> "$out/power_now.txt"; sleep 2
     done
-    e1="$(cat "$bat/energy_now")"
+    e1="$(cat "$bat/energy_now")"; t1="$(date +%s.%N)"
     {
         echo "# Idle summary: $label"
         echo "kernel: $(uname -r)"
+        echo "uptime at end: $(cut -d' ' -f1 /proc/uptime) s"
+        echo "cpufreq policies: $(ls /sys/devices/system/cpu/cpufreq 2>/dev/null | tr '\n' ' ')"
         echo "interconnect nodes at INT_MAX: $(grep -cE ' 214[0-9]{7} ' "$DBG/interconnect/interconnect_summary" 2>/dev/null)"
-        awk '{s+=$2; n++; if(min==""||$2<min)min=$2; if($2>max)max=$2} END{printf "power_now: avg %.3f W, min %.3f W, max %.3f W (%d samples)\n", s/n/1e6, min/1e6, max/1e6, n}' "$out/power_now.txt"
-        awk -v e=$(( e0 - e1 )) -v t="$secs" 'BEGIN{printf "energy_now delta: %d uWh -> %.3f W\n", e, e/1e6/(t/3600)}'
+        # min/max initialised from the first sample (power_now is negative while discharging)
+        awk '{s+=$2; n++; if(n==1||$2<min)min=$2; if(n==1||$2>max)max=$2} END{printf "power_now: avg %.3f W, min %.3f W, max %.3f W (%d samples)\n", s/n/1e6, min/1e6, max/1e6, n}' "$out/power_now.txt"
+        # the fuel gauge averages over ~45 s, so also report the part after the first 60 s
+        awk 'NR==1{t0=$1} $1>=t0+60{s+=$2; n++} END{if(n) printf "power_now after 60 s: avg %.3f W (%d samples)\n", s/n/1e6, n}' "$out/power_now.txt"
+        awk -v e=$(( e0 - e1 )) -v t0="$t0" -v t1="$t1" 'BEGIN{t=t1-t0; printf "energy_now delta: %d uWh over %.1f s -> %.3f W\n", e, t, e/1e6/(t/3600)}'
         echo "brightness: $(cat /sys/class/backlight/*/brightness 2>/dev/null | head -1)/$(cat /sys/class/backlight/*/max_brightness 2>/dev/null | head -1)"
     } > "$out/SUMMARY.md"
     cat "$out/SUMMARY.md"; echo "Wrote $out"
