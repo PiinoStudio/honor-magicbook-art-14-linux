@@ -1,0 +1,129 @@
+Nov 19 11:44:44 fedora kernel: Freezing user space processes
+Nov 19 11:44:44 fedora kernel: Freezing user space processes completed (elapsed 0.002 seconds)
+Nov 19 11:44:44 fedora kernel: OOM killer disabled.
+Nov 19 11:44:44 fedora kernel: Freezing remaining freezable tasks
+Nov 19 11:44:44 fedora kernel: Freezing remaining freezable tasks completed (elapsed 0.001 seconds)
+Nov 19 11:44:44 fedora kernel: printk: Suspending console(s) (use no_console_suspend to debug)
+Nov 19 11:44:44 fedora kernel: GFP mask restricted
+Nov 19 11:44:44 fedora kernel: dwc3-qcom a800000.usb: port-1 HS-PHY not in L2
+Nov 19 11:44:44 fedora kernel: dwc3-qcom a600000.usb: port-1 HS-PHY not in L2
+Nov 19 11:44:44 fedora kernel: dwc3-qcom a400000.usb: port-1 HS-PHY not in L2
+Nov 19 11:44:44 fedora kernel: dwc3-qcom a400000.usb: port-2 HS-PHY not in L2
+Nov 19 11:44:44 fedora kernel: i2c_hid_of 2-005d: device returned incorrect report (255 vs 3 expected)
+Nov 19 11:44:44 fedora kernel: honor_deep_sleep_fix: a98000.serial pm_runtime_force_suspend ret=0, pstate=0
+Nov 19 11:44:44 fedora kernel: PM: suspend of devices complete after 531.409 msecs
+Nov 19 11:44:44 fedora kernel: PM: start suspend of devices complete after 548.870 msecs
+Nov 19 11:44:44 fedora kernel: PM: suspend devices took 0.549 seconds
+Nov 19 11:44:44 fedora kernel: PM: late suspend of devices complete after 97.165 msecs
+Nov 19 11:44:44 fedora kernel: PM: noirq suspend of devices complete after 26.383 msecs
+Nov 19 11:44:44 fedora kernel: PM: suspend-to-idle
+Nov 19 11:44:44 fedora kernel: Ring buffer clock went backwards: 1579035820806 -> 1579035820389
+Nov 19 11:44:44 fedora kernel: Timekeeping suspended for 349.225 seconds
+Nov 19 11:44:44 fedora kernel: PM: Triggering wakeup from IRQ 125
+Nov 19 11:44:44 fedora kernel: PM: resume from suspend-to-idle
+Nov 19 11:44:44 fedora kernel: PM: noirq resume of devices complete after 21.540 msecs
+Nov 19 11:44:44 fedora kernel: mhi mhi0: Requested to power ON
+Nov 19 11:44:44 fedora kernel: mhi mhi0: Power on setup success
+Nov 19 11:44:44 fedora kernel: mhi mhi0: Wait for device to enter SBL or Mission mode
+Nov 19 11:44:44 fedora kernel: PM: early resume of devices complete after 531.280 msecs
+Nov 19 11:44:44 fedora kernel: honor_deep_sleep_fix: a98000.serial pm_runtime_force_resume ret=0, pstate=128
+Nov 19 11:44:44 fedora kernel: ath12k_wifi7_pci 0004:01:00.0: qmi dma allocation failed (7274496 B type 1), will try later with small size
+Nov 19 11:44:44 fedora kernel: ath12k_wifi7_pci 0004:01:00.0: chip_id 0x2 chip_family 0x4 board_id 0xff soc_id 0x40170200
+Nov 19 11:44:44 fedora kernel: ath12k_wifi7_pci 0004:01:00.0: fw_version 0x1103006c fw_build_timestamp 2026-03-06 09:10 fw_build_id QC_IMAGE_VERSION_STRING=WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Nov 19 11:44:44 fedora kernel: hwmon hwmon68: PM: parent phy0 should not be sleeping
+Nov 19 11:44:44 fedora kernel: i2c_hid_of 2-005d: device returned incorrect report (255 vs 3 expected)
+Nov 19 11:44:44 fedora kernel: PM: resume of devices complete after 607.171 msecs
+Nov 19 11:44:44 fedora kernel: GFP mask restored
+Nov 19 11:44:44 fedora kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+Nov 19 11:44:44 fedora kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+Nov 19 11:44:44 fedora kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+Nov 19 11:44:44 fedora kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+Nov 19 11:44:44 fedora kernel: PM: resume devices took 1.701 seconds
+Nov 19 11:44:44 fedora kernel: OOM killer enabled.
+Nov 19 11:44:44 fedora kernel: Restarting tasks: Starting
+Nov 19 11:44:44 fedora kernel: Restarting tasks: Done
+Nov 19 11:44:44 fedora kernel: random: crng reseeded on system resumption
+Nov 19 11:44:44 fedora kernel: PM: suspend exit
+Nov 19 11:44:44 fedora kernel: Bluetooth: hci0: setting up wcn7850
+Nov 19 11:44:44 fedora kernel: Bluetooth: hci0: QCA Product ID   :0x00000019
+Nov 19 11:44:44 fedora kernel: Bluetooth: hci0: QCA SOC Version  :0x40170200
+Nov 19 11:44:44 fedora kernel: Bluetooth: hci0: QCA ROM Version  :0x00000200
+Nov 19 11:44:44 fedora kernel: Bluetooth: hci0: QCA Patch Version:0x000043fb
+Nov 19 11:44:44 fedora kernel: Bluetooth: hci0: QCA controller version 0x02000200
+Nov 19 11:44:44 fedora kernel: Bluetooth: hci0: QCA Downloading qca/hmtbtfw20.tlv
+Nov 19 11:44:45 fedora kernel: Bluetooth: hci0: QCA Downloading qca/hmtnv20.b112
+Nov 19 11:44:46 fedora kernel: Bluetooth: hci0: QCA FW build version: BTFW.HAMILTON.2.0.1-00349-WOS_PATCHZ-2
+Nov 19 11:44:46 fedora kernel: Bluetooth: hci0: QCA setup on UART is completed
+Nov 19 11:44:46 fedora kernel: Bluetooth: hci0: HFP non-HCI data transport is supported
+Nov 19 11:44:46 fedora kernel: Bluetooth: hci0: AOSP extensions version v0.98
+Nov 19 11:44:46 fedora kernel: Bluetooth: hci0: AOSP quality report is supported
+Nov 19 11:44:46 fedora kernel: Bluetooth: MGMT ver 1.23
+Nov 19 11:44:50 fedora kernel: dwc3-qcom a400000.usb: port-2 HS-PHY not in L2
+Nov 19 11:45:00 fedora kernel: wlP4p1s0: authenticate with <ap-mac> (local address=<wlan-mac>)
+Nov 19 11:45:00 fedora kernel: wlP4p1s0: send auth to <ap-mac> (try 1/3)
+Nov 19 11:45:00 fedora kernel: wlP4p1s0: authenticated
+Nov 19 11:45:00 fedora kernel: wlP4p1s0: associate with <ap-mac> (try 1/3)
+Nov 19 11:45:01 fedora kernel: wlP4p1s0: RX AssocResp from <ap-mac> (capab=0x1511 status=0 aid=8)
+Nov 19 11:45:01 fedora kernel: wlP4p1s0: associated
+Nov 19 11:45:01 fedora kernel: wlP4p1s0: Limiting TX power to 23 (23 - 0) dBm as advertised by <ap-mac>
+Nov 19 11:46:05 <host> kernel: PM: suspend entry (s2idle)
+Nov 19 11:46:05 <host> kernel: Filesystems sync: 0.038 seconds
+Nov 19 11:46:05 <host> kernel: honor_deep_sleep_fix: set bridge_d3=0 on PCIe RP 0004:00:00.0
+Nov 19 11:46:05 <host> kernel: honor_deep_sleep_fix: configured pcie-mem icc tag=3, bw=250000
+Nov 19 11:57:11 <host> kernel: Freezing user space processes
+Nov 19 11:57:11 <host> kernel: Freezing user space processes completed (elapsed 0.003 seconds)
+Nov 19 11:57:11 <host> kernel: OOM killer disabled.
+Nov 19 11:57:11 <host> kernel: Freezing remaining freezable tasks
+Nov 19 11:57:11 <host> kernel: Freezing remaining freezable tasks completed (elapsed 0.001 seconds)
+Nov 19 11:57:11 <host> kernel: printk: Suspending console(s) (use no_console_suspend to debug)
+Nov 19 11:57:11 <host> kernel: GFP mask restricted
+Nov 19 11:57:11 <host> kernel: wlP4p1s0: deauthenticating from <ap-mac> by local choice (Reason: 3=DEAUTH_LEAVING)
+Nov 19 11:57:11 <host> kernel: dwc3-qcom a800000.usb: port-1 HS-PHY not in L2
+Nov 19 11:57:11 <host> kernel: dwc3-qcom a600000.usb: port-1 HS-PHY not in L2
+Nov 19 11:57:11 <host> kernel: dwc3-qcom a400000.usb: port-1 HS-PHY not in L2
+Nov 19 11:57:11 <host> kernel: dwc3-qcom a400000.usb: port-2 HS-PHY not in L2
+Nov 19 11:57:11 <host> kernel: i2c_hid_of 2-005d: device returned incorrect report (255 vs 3 expected)
+Nov 19 11:57:11 <host> kernel: honor_deep_sleep_fix: a98000.serial pm_runtime_force_suspend ret=0, pstate=0
+Nov 19 11:57:11 <host> kernel: PM: suspend of devices complete after 552.805 msecs
+Nov 19 11:57:11 <host> kernel: PM: start suspend of devices complete after 570.085 msecs
+Nov 19 11:57:11 <host> kernel: PM: suspend devices took 0.570 seconds
+Nov 19 11:57:11 <host> kernel: PM: late suspend of devices complete after 96.268 msecs
+Nov 19 11:57:11 <host> kernel: PM: noirq suspend of devices complete after 25.572 msecs
+Nov 19 11:57:11 <host> kernel: PM: suspend-to-idle
+Nov 19 11:57:11 <host> kernel: Timekeeping suspended for 662.656 seconds
+Nov 19 11:57:11 <host> kernel: PM: Triggering wakeup from IRQ 125
+Nov 19 11:57:11 <host> kernel: PM: resume from suspend-to-idle
+Nov 19 11:57:11 <host> kernel: PM: noirq resume of devices complete after 21.015 msecs
+Nov 19 11:57:11 <host> kernel: mhi mhi0: Requested to power ON
+Nov 19 11:57:11 <host> kernel: mhi mhi0: Power on setup success
+Nov 19 11:57:11 <host> kernel: mhi mhi0: Wait for device to enter SBL or Mission mode
+Nov 19 11:57:11 <host> kernel: PM: early resume of devices complete after 535.655 msecs
+Nov 19 11:57:11 <host> kernel: honor_deep_sleep_fix: a98000.serial pm_runtime_force_resume ret=0, pstate=128
+Nov 19 11:57:11 <host> kernel: ath12k_wifi7_pci 0004:01:00.0: qmi dma allocation failed (7274496 B type 1), will try later with small size
+Nov 19 11:57:11 <host> kernel: ath12k_wifi7_pci 0004:01:00.0: chip_id 0x2 chip_family 0x4 board_id 0xff soc_id 0x40170200
+Nov 19 11:57:11 <host> kernel: ath12k_wifi7_pci 0004:01:00.0: fw_version 0x1103006c fw_build_timestamp 2026-03-06 09:10 fw_build_id QC_IMAGE_VERSION_STRING=WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Nov 19 11:57:11 <host> kernel: hwmon hwmon68: PM: parent phy0 should not be sleeping
+Nov 19 11:57:11 <host> kernel: i2c_hid_of 2-005d: device returned incorrect report (255 vs 3 expected)
+Nov 19 11:57:11 <host> kernel: PM: resume of devices complete after 604.559 msecs
+Nov 19 11:57:11 <host> kernel: GFP mask restored
+Nov 19 11:57:11 <host> kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+Nov 19 11:57:11 <host> kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+Nov 19 11:57:11 <host> kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) before write = 0x00
+Nov 19 11:57:11 <host> kernel: [drm-dp] msm_dp_ctrl_link_train: HONOR_DEBUG: DPCD 0x160 (DP_DSC_ENABLE) after write = 0x00
+Nov 19 11:57:11 <host> kernel: PM: resume devices took 1.699 seconds
+Nov 19 11:57:11 <host> kernel: OOM killer enabled.
+Nov 19 11:57:11 <host> kernel: Restarting tasks: Starting
+Nov 19 11:57:11 <host> kernel: Restarting tasks: Done
+Nov 19 11:57:11 <host> kernel: random: crng reseeded on system resumption
+Nov 19 11:57:11 <host> kernel: PM: suspend exit
+Nov 19 11:57:17 <host> kernel: dwc3-qcom a400000.usb: port-2 HS-PHY not in L2
+Nov 19 11:57:26 <host> kernel: wlP4p1s0: authenticate with <ap-mac> (local address=<random-mac>)
+Nov 19 11:57:26 <host> kernel: wlP4p1s0: send auth to <ap-mac> (try 1/3)
+Nov 19 11:57:26 <host> kernel: wlP4p1s0: aborting authentication with <ap-mac> by local choice (Reason: 3=DEAUTH_LEAVING)
+Nov 19 11:57:34 fedora kernel: wlP4p1s0: authenticate with <ap-mac> (local address=<wlan-mac>)
+Nov 19 11:57:34 fedora kernel: wlP4p1s0: send auth to <ap-mac> (try 1/3)
+Nov 19 11:57:34 fedora kernel: wlP4p1s0: authenticated
+Nov 19 11:57:34 fedora kernel: wlP4p1s0: associate with <ap-mac> (try 1/3)
+Nov 19 11:57:34 fedora kernel: wlP4p1s0: RX AssocResp from <ap-mac> (capab=0x1511 status=0 aid=8)
+Nov 19 11:57:34 fedora kernel: wlP4p1s0: associated
+Nov 19 11:57:34 fedora kernel: wlP4p1s0: Limiting TX power to 23 (23 - 0) dBm as advertised by <ap-mac>
