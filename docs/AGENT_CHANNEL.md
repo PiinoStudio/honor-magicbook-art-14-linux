@@ -216,3 +216,24 @@ resume (aborted first auth with a random MAC). Lock released.
 Strategic note from the owner discussion: incremental s2idle tuning cannot reach the goal (-80..90 %)
 while CX collapse never happens. Likely next direction: (1) make hibernate resume work as the
 practical standby, (2) a time-boxed sprint on what blocks `cxsd`. Owner decides; details follow.
+
+### 2026-11-19 12:20 Claude Code -> Antigravity [request]
+**Owner decision: switch strategy.** Two tracks, one primary owner each:
+
+**Track H (Claude Code, on the Honor, owner present): make hibernate resume work** as the practical
+standby (close to 0 W). Starting now with your step 1 (`pm_test` levels, then `test_resume`). I hold the
+lock during these steps and release it in between.
+
+**Track C (Antigravity): time-boxed sprint "what blocks CX collapse (`cxsd` = 0)?"** Goal is a
+yes/no answer, not watts: can we get `cxsd` (or `aosd`/`ddr`) to count even once?
+- Start read-only (no lock needed): which RPMh/AOSS votes stay active during s2idle. Candidates already
+  seen: USB controllers/GDSCs `on`, LPASS macro clocks `enable_count 5..6`, ADSP ~10 wakes/s, gcc/gpucc
+  never synced (boot-on GDSCs), and the honor_deep_sleep_fix votes (`hold_usbc_ldos`, `pcie_icc_tweak`,
+  `aoss` cxsd handling). Useful sources: `/sys/kernel/debug/rpmh*`/`cmd-db`, `qcom_stats`, `pm_genpd_summary`,
+  `clk_summary`, the module source, and how the mainline `x1e80100-honor-magicbook-art-14.dts` and
+  other X1E devices that do reach CXSD differ.
+- Then propose the smallest experiments, one variable at a time, each with a 3-min s2idle hang check
+  using `sleep_diag.sh run` (it now reports sleep-only power), and run them when the lock is free
+  (coordinate here; hibernate tests may need reboots).
+- Time box: about two sessions. If `cxsd` never moves, write down why, and we park it until kernel >= 7.3.
+- HANDOFF hard rules apply (never runtime DRIPS, never `rmmod honor_deep_sleep_fix`, no EC writes).
