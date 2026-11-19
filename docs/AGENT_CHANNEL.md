@@ -161,3 +161,25 @@ Owner decision: hibernate is deprioritized for now (no `pm_test` run), and Antig
 - Yet `qcom_stats/apss` stayed `123 -> 123` (`0 s` delta), `cxsd`/`aosd`/`ddr` stayed `0 -> 0`, `adsp` `24063 -> 27477` (`219 s`), `energy_now` `34535 -> 34224 mWh` (`4.976 W` avg over `225 s` incl. `25 s` lid delay + `5 s` settle; 58 `INT_MAX` ICC nodes still unsynced).
 - Note: `tuned.service` had reset `ondemand` back to `schedutil` on reboot; updated `cpufreq-ondemand.service` with `After=systemd-modules-load.service tuned.service` and verified `ondemand` held before running.
 - Lock remains held by `antigravity` pending owner decision on next run (`apply-icc` + 3-min s2idle on current boot vs Phase 3 `pcie_bridge_d3=1` vs 30-min Phase 2).
+
+### 2026-11-19 11:26 Antigravity -> Claude Code [handover]
+**Honor lock status: `FREE`** (released by `antigravity`). Handing the Honor back to Claude Code per owner request.
+
+#### Current state on the Honor (live boot, EL1 `7.2.11-300.fc45.aarch64`)
+- Repo `honor_deep_sleep_fix.ko` installed in `/lib/modules/7.2.11-300.fc45.aarch64/extra/` (`depmod -a` done).
+- `/etc/modprobe.d/honor-sleep.conf`: `options honor_deep_sleep_fix sync_all_suppliers=0 drips_mode=1 hold_usbc_ldos=1`.
+- `/etc/systemd/system/cpufreq-ondemand.service`: enabled with `After=systemd-modules-load.service tuned.service` (uses `printf ondemand | tee ...` because `tuned.service` had reset `schedutil`); `ondemand` active on `policy0/4/8`.
+- `1700000.interconnect` & `interconnect-1` are forced `state_synced=1` (`INT_MAX = 0`) on this boot until reboot; `gcc`/`gpucc` untouched.
+- Never `rmmod honor_deep_sleep_fix` on this boot (`S2idle = 3` already occurred).
+
+#### New results committed on `claude/peaceful-meitner-0wq9vl` (please review as `review.md` in each folder)
+1. `results/20261119-1044-cpufreq-ondemand/` (`fb265ec`): isolated the SCMI stuck-at-712-MHz anomaly to `schedutil`'s `fast_switch` path; `ondemand` (`target_index`) hit `3.42 / 4.00 / 4.00 GHz` on 3/3 probes and idled at `6.188 W` after 60 s (`2/255`).
+2. `results/20261119-1105-p2-drips-short/` (`9fcdaa4`): Phase 2 (`drips_mode=1`, `INT_MAX=58`) clean `191.5 s` s2idle + wake (`freeze rc=0`); `power-domain-system S2idle=1`, `cluster0..2 S1 S2idle=1`, `apss 123 -> 123`, `4.976 W` over `225 s`.
+3. `results/20261119-1115-p2b-drips-icc-synced/` (this commit): Phase 2 + `apply-icc` (`INT_MAX=0`) clean `411.957 s` s2idle + wake (`freeze rc=0`); `power-domain-system S2idle=2` (`3` after follow-up `logind` sleep), `apss` STILL `123 -> 123` (`0 s` delta), `cxsd/aosd/ddr 0 -> 0`, `adsp` `+3507` over `439 s` (~`8.0/s`), `4.706 W` avg over `446 s` (`energy_now 33539 -> 32956 mWh`).
+
+#### Key mystery & suggested next steps for Claude Code
+1. **Why does `qcom_stats/apss` count `123` entries during boot (`t = 0..26 s`) yet `0` across 3 clean `s2idle` runs (`S2idle = 3`, `412 s` sleep) even with `drips_mode=1` and `INT_MAX = 0`?**
+   - Note that `power-domain-system` `S0` shows `Time=3757 ms` / `Usage=246`, all of which accumulated before `honor_deep_sleep_fix` loaded at `t = 26 s` (only `S2idle` incremented `0 -> 3`). Suggest tracing `rpmh_send_msg` + `psci_domain_idle_enter` + `rpmh-rsc` suspend callbacks in a short `s2idle` run, and checking what differs after `t = 26 s` (`honor_set_aoss_cxsd`, `qcom_adsp_pwr_lmts`, `ath12k` probe, or EL1 arch timer / `clockevent` state in `s2idle`).
+2. **Phase 3 (`pcie_bridge_d3=1`):** Set `pcie_bridge_d3=1`, reboot (remember GRUB defaults to `1. Windows 11`; ask owner to choose entry 2), run short hang checks, and measure whether allowing Wi-Fi RP `0004:00:00.0` into D3 lowers the `~4.6–4.7 W` s2idle draw.
+3. **Awake USB runtime PM & LPASS clocks:** All 6 USB root hubs (`usb1..usb6`) show `ctrl=auto, status=suspended`, yet `xhci-hcd.{1,2,3}.auto` and `a{4,6,8}00000.usb` stay `active` (keeping 10 `gcc_usb*_gdsc` domains `on`, `perf=256`) and log `dwc3-qcom ... port-* HS-PHY not in L2` on every `s2idle`. `LPASS_HW_MACRO`/`LPASS_HW_DCODEC` also sit at `enable_count=5..6` while idle.
+4. **Antigravity availability:** Ready for result reviews or Phase 7 (kernel `>= 7.3` + 120 Hz OLED patch rebase) whenever needed.

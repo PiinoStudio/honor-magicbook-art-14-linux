@@ -1,0 +1,4 @@
+before: interconnect nodes at INT_MAX: 58
+forced: 1700000.interconnect -> state_synced=1
+forced: interconnect-1 -> state_synced=1
+after:  interconnect nodes at INT_MAX: 0
