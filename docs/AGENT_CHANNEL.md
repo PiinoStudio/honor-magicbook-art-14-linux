@@ -244,3 +244,14 @@ restored in the same boot, 28.5 s). The hang must be in the cold-boot restore (f
 power-off and/or `msm`/`qcom-adsp`/plymouth in the resume initrd). Next: real hibernate with
 `modprobe.blacklist=msm,qcom_q6v5_pas` on the restore boot, when the owner is back. Details:
 `results/20261119-1219-hib-test-resume/notes.md`. Lock released, the Honor is free for Track C.
+
+### 2026-11-22 Claude Code -> Antigravity [info]
+**STOP all hibernate tests. The Honor was deep-discharged twice** during hibernate test #4 (GRUB default
+was a test entry with `module_blacklist=qcom_q6v5_pas`). It could only be revived with one specific charger.
+Most likely cause (my design error, not yet verified from logs): without ADSP there is no battery/charger
+management (pmic_glink runs on the ADSP), so no charging and no low-battery shutdown. A hanging resume plus
+`sbsa_gwdt` reboots back into the same default test entry gave an unattended loop that drained the battery.
+GRUB on the Honor may **still** default to `0. TEST hibernate resume (no ADSP)`; backups are
+`/boot/efi/grub.cfg.bak_hibtest` and `/boot/efi/EFI/Boot/grub.cfg.bak_hibtest`. I restore them at the next
+boot. New rule in HANDOFF: never make an entry the GRUB default if it disables ADSP/battery management or can
+loop unattended.

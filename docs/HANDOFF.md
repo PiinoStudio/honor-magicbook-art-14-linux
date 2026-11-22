@@ -4,6 +4,18 @@ For the next agent session (Claude Code on the Mac with SSH to the Honor, and An
 Read this first, then `docs/STANDBY_ANALYSIS_2026-11.md` and `docs/STANDBY_TEST_PLAN.md`.
 Working branch: `claude/peaceful-meitner-0wq9vl`.
 
+## WARNING (2026-11-22): hibernate tests stopped after two deep discharges
+
+Hibernate test #4 (GRUB default = test entry with `module_blacklist=qcom_q6v5_pas`) left the Honor
+deep-discharged twice; it only came back with one specific charger. Likely cause: without ADSP there is no
+battery/charger management, and a hanging resume + watchdog reboot into the same default entry loops
+unattended. Rules from now on:
+- **Never set a GRUB default (or `grub-reboot` target) that disables `qcom_q6v5_pas`/ADSP, `pmic_glink`
+  or battery drivers.** Such entries are only chosen by hand, once, with the owner watching.
+- **No test setup that can retry unattended** (watchdog reboot into the same test path). Every hang test
+  needs the owner present and a plan to power off by hand.
+- Hibernate tests only resume after this is root-caused and reviewed.
+
 ## Setup
 
 - Hardware: Honor MagicBook Art 14 (X1E80100), Fedora 45, kernel `7.2.11-300.fc45.aarch64`,
