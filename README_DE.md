@@ -1,5 +1,21 @@
 # Honor MagicBook Art 14 Snapdragon (X1E80100) — Linux Support Toolkit (Deutsch)
 
+> [!CAUTION]
+> **Projektstand (November 2026): Empfohlen ist nur die Display-Implementierung.**
+>
+> Von diesem Projekt sollte **nur die Display-Implementierung (`display/`: natives 3.1K-OLED mit 120 Hz) übernommen werden.**
+> Der Rest ist im Prinzip ein Fehlschlag und sollte nicht als Grundlage dienen:
+> - **Standby funktioniert nicht.** `s2idle` braucht etwa **4,8 W** (wach im Leerlauf etwa 6,2 W), weil der SoC unter EL1
+>   (Gunyah) nie in den CX-Collapse / DRIPS kommt. Ein 53-Wh-Akku ist damit in rund 11 Stunden leer, und nichts weckt das
+>   System für ein Herunterfahren bei niedrigem Akku. **Auf dem Testgerät führte das nach dem Zuklappen zweimal zur
+>   Tiefentladung**; es ließ sich nur mit einem bestimmten Ladegerät wiederbeleben.
+> - **Der unten beschriebene „0,00-W-Ruhezustand“ stimmt nicht.** Das Speichern klappt, das Aufwachen nach einem Kaltstart
+>   hängt. `power/setup_suspend_hibernate.sh`, `power/lid.conf` und `power/hibernate.conf` bitte **nicht** installieren.
+> - Die EL2/DRIPS-Forschung hat zu keinem nutzbaren Ergebnis geführt. Audio, Fingerprint und die übrigen Teile wurden
+>   nur auf einem Gerät getestet und werden ebenfalls nicht zur Übernahme empfohlen.
+>
+> Die folgenden Abschnitte bleiben nur zur Dokumentation stehen. Rohdaten und das Untersuchungsprotokoll liegen in `results/` und `docs/HANDOFF.md` im Branch `claude/peaceful-meitner-0wq9vl`.
+
 > [!IMPORTANT]
 > **Status / Disclaimer:**
 > - Diese Konfiguration und Patches wurden bisher **nur auf einem einzigen Gerät** (*Honor MagicBook Art 14 Snapdragon*, Modell `MRO-XXX`, Snapdragon X Elite X1E80100) und **ausschließlich unter Fedora 45 Beta (Kernel 7.2.11 ARM64)** getestet.

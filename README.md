@@ -5,6 +5,22 @@
 [![Display](https://img.shields.io/badge/Display-Native%203.1K%20OLED%20%40%20120Hz-orange.svg)](#)
 [![License](https://img.shields.io/badge/License-GPL--2.0%20%2F%20BSD-lightgrey.svg)](#)
 
+> [!CAUTION]
+> **Project status (November 2026): only the display implementation is recommended.**
+>
+> Of this project, **only the display implementation (`display/`: native 3.1K OLED at 120 Hz) should be adopted.**
+> Everything else is, in essence, a failure and should not be used as a basis:
+> - **Standby does not work.** `s2idle` draws about **4.8 W** (awake idle is about 6.2 W), because the SoC never
+>   reaches CX collapse / DRIPS under EL1 (Gunyah). On a 53 Wh battery that is empty in roughly 11 hours, and nothing
+>   wakes the system for a low-battery shutdown. **On the test unit this caused two deep discharges** after closing the
+>   lid; the laptop only came back with one specific charger.
+> - **The "0.00 W hibernation" below is not true.** Writing the image works, but resuming from a cold boot hangs.
+>   Do **not** install `power/setup_suspend_hibernate.sh`, `power/lid.conf` or `power/hibernate.conf`.
+> - The EL2/DRIPS research did not lead to a usable result. Audio, fingerprint and the other parts were only
+>   ever tested on one unit and are not recommended for adoption either.
+>
+> The sections below are kept for reference only. Raw measurements and the investigation log are in `results/` and `docs/HANDOFF.md` on the branch `claude/peaceful-meitner-0wq9vl`.
+
 > [!IMPORTANT]
 > **Status / Disclaimer:**
 > - These patches and configurations have currently been **validated on a single hardware unit** (*Honor MagicBook Art 14 Snapdragon*, Model `MRO-XXX`, Qualcomm Snapdragon X Elite X1E80100) and **exclusively tested under Fedora 45 Beta (Rawhide / Linux Kernel 7.2.11 ARM64)**.
