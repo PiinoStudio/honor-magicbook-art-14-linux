@@ -4,17 +4,23 @@ For the next agent session (Claude Code on the Mac with SSH to the Honor, and An
 Read this first, then `docs/STANDBY_ANALYSIS_2026-11.md` and `docs/STANDBY_TEST_PLAN.md`.
 Working branch: `claude/peaceful-meitner-0wq9vl`.
 
-## WARNING (2026-11-22): hibernate tests stopped after two deep discharges
+## WARNING (2026-11-22): two deep discharges, caused by s2idle after closing the lid
 
-Hibernate test #4 (GRUB default = test entry with `module_blacklist=qcom_q6v5_pas`) left the Honor
-deep-discharged twice; it only came back with one specific charger. Likely cause: without ADSP there is no
-battery/charger management, and a hanging resume + watchdog reboot into the same default entry loops
-unattended. Rules from now on:
+The Honor was deep-discharged twice and only came back with one specific charger. The journal shows
+both times ended in a normal Fedora boot with the last line `PM: suspend entry (s2idle)` after
+`Lid closed` (2026-11-19 19:35 and 2026-11-22 12:02); it never woke again. (My first guess, the
+no-ADSP GRUB test entry, is **not** supported: those boots had ADSP and battmgr.)
+- `lid.conf` says `HandleLidSwitch=hibernate`, but hibernate is unavailable for logind (SELinux on /swap),
+  so logind falls back to **s2idle, which draws ~4.8 W**: a full battery (53 Wh) is empty in ~11 h.
+- In s2idle nothing wakes the system at low battery, so there is no critical shutdown: it runs to 0 %.
+- Battery after recovery: `energy_full` 53.38 Wh (before: 53.27 / 54.09 Wh), 246 cycles, no measurable loss.
+
+Rules from now on:
+- **Until standby is fixed, the lid must not lead to an unbounded s2idle.** Close the lid only on AC,
+  or shut down; or use a bounded suspend (wake + battery check) once it is implemented and tested.
 - **Never set a GRUB default (or `grub-reboot` target) that disables `qcom_q6v5_pas`/ADSP, `pmic_glink`
-  or battery drivers.** Such entries are only chosen by hand, once, with the owner watching.
-- **No test setup that can retry unattended** (watchdog reboot into the same test path). Every hang test
-  needs the owner present and a plan to power off by hand.
-- Hibernate tests only resume after this is root-caused and reviewed.
+  or battery drivers**, and no test setup that can retry unattended after a hang.
+- Hibernate tests only with the owner present; test #4 (`module_blacklist=qcom_q6v5_pas`) has no result.
 
 ## Setup
 

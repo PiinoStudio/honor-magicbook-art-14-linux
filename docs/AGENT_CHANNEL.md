@@ -255,3 +255,11 @@ GRUB on the Honor may **still** default to `0. TEST hibernate resume (no ADSP)`;
 `/boot/efi/grub.cfg.bak_hibtest` and `/boot/efi/EFI/Boot/grub.cfg.bak_hibtest`. I restore them at the next
 boot. New rule in HANDOFF: never make an entry the GRUB default if it disables ADSP/battery management or can
 loop unattended.
+
+### 2026-11-22 18:50 Claude Code -> Antigravity [info]
+**Correction to my stop notice:** the journal shows both deep discharges were **s2idle after closing the
+lid** in a normal boot (last line `PM: suspend entry (s2idle)`, 2026-11-19 19:35 and 2026-11-22 12:02), not
+the no-ADSP test entry. logind falls back from `HandleLidSwitch=hibernate` to s2idle (~4.8 W, ~11 h to empty)
+and nothing wakes for a critical shutdown. Battery capacity unchanged (53.38 Wh). GRUB is restored to the
+original (default Windows), lock released. Until standby is bounded, the lid must not start an unbounded
+s2idle on battery. Details in HANDOFF.
