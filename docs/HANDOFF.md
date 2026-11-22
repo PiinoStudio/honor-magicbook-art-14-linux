@@ -4,6 +4,20 @@ For the next agent session (Claude Code on the Mac with SSH to the Honor, and An
 Read this first, then `docs/STANDBY_ANALYSIS_2026-11.md` and `docs/STANDBY_TEST_PLAN.md`.
 Working branch: `claude/peaceful-meitner-0wq9vl`.
 
+## Disk layout changed (2026-11-22): Fedora is small, hibernate is gone
+
+Owner decision: give most of the disk back to Windows. Done and cold-boot verified:
+- SHARED (NTFS, `sda10`, empty) deleted. Fedora moved live to the end of the disk: `/boot` = `sda10` (2 GB ext4,
+  same UUID `bde340e2…`), root = `sda11` (40 GB btrfs, same fs UUID `44682637…`, via `btrfs device add/remove`).
+  Old `sda8`/`sda9` deleted, so 411 GB unallocated directly after Windows C: (owner extends C: in Windows).
+  Partition table backup before the change: `~/shrink_backup_20261122/` on the Honor.
+- **Hibernate disabled**: swapfile and `/swap` subvolume deleted, `resume=`/`resume_offset=` removed from both
+  static GRUB files. Swap is zram only. **Do not run hibernate tests** without re-creating a swapfile first.
+- `lid.conf`: lid on battery = **poweroff**, on AC = suspend, power key = poweroff (prevents unbounded s2idle).
+- GRUB boots kernel and `initrd_native.img` from the ESP, not from `/boot`; `/boot` only matters for updates.
+- Harmless: `systemd-growfs-root` fails (`No such device`, looks for the removed devid 1). An old pending
+  `dnf5` offline update failed on the first boot after the move (reason not logged); rerun updates by hand.
+
 ## WARNING (2026-11-22): two deep discharges, caused by s2idle after closing the lid
 
 The Honor was deep-discharged twice and only came back with one specific charger. The journal shows
